@@ -1,0 +1,170 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Repos.Models;
+using Services.DTOs;
+using Services.Interfaces;
+
+namespace Services.Implementations;
+
+public class ReviewService : IReviewService
+{
+    private readonly HotWaterGasDBContext _dbContext;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    public ReviewService(HotWaterGasDBContext dbContext, IHttpContextAccessor httpContextAccessor)
+    {
+        _dbContext = dbContext;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    public async Task<ReviewListResponse> GetProductReviewsAsync(Guid productId, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        var currentUserId = GetCurrentUserId();
+        var safePage = page < 1 ? 1 : page;
+        var safePageSize = pageSize <= 0 ? 10 : Math.Min(pageSize, 50);
+
+        var reviewsQuery = _dbContext.Reviews
+            .AsNoTracking()
+            .Where(r => r.ProductId == productId)
+            .Include(r => r.User)
+            .AsQueryable();
+
+        var totalReviews = await reviewsQuery.CountAsync(cancellationToken);
+        var averageRating = totalReviews > 0 
+            ? (decimal)Math.Round(await reviewsQuery.AverageAsync(r => r.Rating, cancellationToken), 1) 
+            : 0;
+
+        var reviews = await reviewsQuery
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((safePage - 1) * safePageSize)
+            .Take(safePageSize)
+            .Select(r => new ReviewItemResponse
+            {
+                Id = r.Id,
+                UserDisplayName = r.User.Email,
+                Rating = r.Rating,
+                Comment = r.Comment,
+                CreatedAt = r.CreatedAt,
+                IsEdited = r.IsEdited,
+                IsMine = r.UserId == currentUserId
+            })
+            .ToListAsync(cancellationToken);
+
+        var totalPages = totalReviews == 0 ? 0 : (int)Math.Ceiling(totalReviews / (double)safePageSize);
+
+        return new ReviewListResponse
+        {
+            AverageRating = averageRating,
+            TotalReviews = totalReviews,
+            TotalPages = totalPages,
+            Reviews = reviews
+        };
+    }
+
+    public async Task<ReviewItemResponse> CreateReviewAsync(Guid productId, int rating, string comment, CancellationToken cancellationToken = default)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == Guid.Empty)
+        {
+            throw new UnauthorizedAccessException("User not authenticated.");
+        }
+
+        var product = await _dbContext.Products
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == productId && !p.IsDeleted, cancellationToken);
+
+        if (product is null)
+        {
+            throw new KeyNotFoundException("Product not found.");
+        }
+
+        var existingReview = await _dbContext.Reviews
+            .FirstOrDefaultAsync(r => r.UserId == userId && r.ProductId == productId, cancellationToken);
+
+        if (existingReview is not null)
+        {
+            throw new InvalidOperationException("You have already reviewed this product.");
+        }
+
+        var now = DateTime.UtcNow;
+        var review = new Reviews
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProductId = productId,
+            Rating = rating,
+            Comment = comment,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsEdited = false
+        };
+
+        _dbContext.Reviews.Add(review);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var user = await _dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+        return new ReviewItemResponse
+        {
+            Id = review.Id,
+            UserDisplayName = user?.Email ?? "Anonymous",
+            Rating = review.Rating,
+            Comment = review.Comment,
+            CreatedAt = review.CreatedAt,
+            IsEdited = review.IsEdited,
+            IsMine = true
+        };
+    }
+
+    public async Task<ReviewItemResponse> UpdateMyReviewAsync(Guid productId, int rating, string comment, CancellationToken cancellationToken = default)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == Guid.Empty)
+        {
+            throw new UnauthorizedAccessException("User not authenticated.");
+        }
+
+        var review = await _dbContext.Reviews
+            .Include(r => r.User)
+            .FirstOrDefaultAsync(r => r.UserId == userId && r.ProductId == productId, cancellationToken);
+
+        if (review is null)
+        {
+            throw new KeyNotFoundException("Review not found.");
+        }
+
+        review.Rating = rating;
+        review.Comment = comment;
+        review.UpdatedAt = DateTime.UtcNow;
+        review.IsEdited = true;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ReviewItemResponse
+        {
+            Id = review.Id,
+            UserDisplayName = review.User?.Email ?? "Anonymous",
+            Rating = review.Rating,
+            Comment = review.Comment,
+            CreatedAt = review.CreatedAt,
+            IsEdited = review.IsEdited,
+            IsMine = true
+        };
+    }
+
+    private Guid GetCurrentUserId()
+    {
+        var user = _httpContextAccessor.HttpContext?.User;
+        if (user?.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            if (Guid.TryParse(userIdClaim, out var userId))
+            {
+                return userId;
+            }
+        }
+        return Guid.Empty;
+    }
+}

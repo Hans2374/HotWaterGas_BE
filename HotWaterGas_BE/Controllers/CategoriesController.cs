@@ -1,0 +1,23 @@
+using Microsoft.AspNetCore.Mvc;
+using Services.Interfaces;
+
+namespace HotWaterGas_BE.Controllers;
+
+[ApiController]
+[Route("api/categories")]
+public class CategoriesController : ControllerBase
+{
+    private readonly IProductCatalogService _productCatalogService;
+
+    public CategoriesController(IProductCatalogService productCatalogService)
+    {
+        _productCatalogService = productCatalogService;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetCategories(CancellationToken cancellationToken)
+    {
+        var categories = await _productCatalogService.GetCategoriesAsync(cancellationToken);
+        return Ok(categories);
+    }
+}
