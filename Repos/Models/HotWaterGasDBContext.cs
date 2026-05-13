@@ -60,8 +60,10 @@ public partial class HotWaterGasDBContext : DbContext
     public virtual DbSet<Wishlists> Wishlists { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Data Source=DESKTOP-2SQIHP7;Initial Catalog=HotWaterGasDB;User ID=sa;Password=12345;Encrypt=False");
+    {
+        // Configuration is handled via dependency injection in Program.cs.
+        // For design-time tools (EF Core CLI), use HotWaterGasDBContextFactory.
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -84,10 +86,10 @@ public partial class HotWaterGasDBContext : DbContext
         {
             entity.HasIndex(e => e.UserId, "IX_Carts_UserId")
                 .IsUnique()
-                .HasFilter("([IsCheckedOut]=(0))");
+                .HasFilter("\"IsCheckedOut\" = false");
 
             entity.Property(e => e.Id).ValueGeneratedNever();
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
 
             entity.HasOne(d => d.User).WithOne(p => p.Carts).HasForeignKey<Carts>(d => d.UserId);
         });
@@ -99,8 +101,8 @@ public partial class HotWaterGasDBContext : DbContext
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Name).IsRequired();
             entity.Property(e => e.Slug).IsRequired();
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("NOW()");
         });
 
         modelBuilder.Entity<Discounts>(entity =>
@@ -162,7 +164,7 @@ public partial class HotWaterGasDBContext : DbContext
 
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.CodeHash).IsRequired();
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
             entity.Property(e => e.Email).IsRequired();
 
             entity.HasOne(d => d.User).WithMany(p => p.PasswordResets)
@@ -286,7 +288,7 @@ public partial class HotWaterGasDBContext : DbContext
 
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Comment).IsRequired();
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("NOW()");
 
             entity.HasOne(d => d.Product).WithMany(p => p.Reviews)
                 .HasForeignKey(d => d.ProductId)
@@ -309,7 +311,7 @@ public partial class HotWaterGasDBContext : DbContext
 
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.KeyValue).IsRequired();
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("NOW()");
 
             entity.HasOne(d => d.Order).WithMany(p => p.SteamKeys).HasForeignKey(d => d.OrderId);
 
@@ -326,8 +328,8 @@ public partial class HotWaterGasDBContext : DbContext
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Name).IsRequired().HasMaxLength(450);
             entity.Property(e => e.Slug).IsRequired().HasMaxLength(120);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("NOW()");
         });
 
         modelBuilder.Entity<Users>(entity =>
