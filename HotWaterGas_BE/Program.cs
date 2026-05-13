@@ -49,7 +49,7 @@ builder.Services.AddDbContext<HotWaterGasDBContext>(options =>
 // ── CORS Configuration ─────────────────────────────────────────────────────────
 // Get allowed origins from configuration (supports environment variables)
 var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>()
-    ?? new[] { "http://localhost:5173", "http://localhost:3000", "http://localhost:5140" };
+    ?? new[] { "http://localhost:5173", "http://localhost:3000", "http://localhost:5140", "https://hot-water-gas-fe.vercel.app" };
 
 builder.Services.AddCors(options =>
 {
