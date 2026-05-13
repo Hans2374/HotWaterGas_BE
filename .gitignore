@@ -1,9 +1,50 @@
+# Build outputs
 bin/
 obj/
+
+# Visual Studio
 .vs/
-appsettings.Development.json
 *.user
 *.suo
+*.userosscache
+*.sln.docstates
 
-appsettings.json
+# =============================================================================
+# Environment Configuration Files
+# =============================================================================
+# NEVER commit files containing secrets!
+
+# Local environment (contains real credentials)
 .env
+
+# Environment-specific files
+.env.*
+!.env.example
+!.env.production.template
+
+# Development settings (may contain local credentials)
+appsettings.json
+appsettings.Development.json
+appsettings.Local.json
+
+# Production settings template (use this as a guide)
+appsettings.Production.json.template
+appsettings.*.local.json
+
+# =============================================================================
+# Security: Secrets & Credentials
+# =============================================================================
+*.pem
+*.key
+*.pfx
+*.crt
+*.cer
+credentials.json
+secrets.json
+appsettings.*.secret*.json
+
+# =============================================================================
+# Platform-specific files
+# =============================================================================
+.DS_Store
+Thumbs.db

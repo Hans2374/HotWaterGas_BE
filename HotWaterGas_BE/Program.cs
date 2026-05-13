@@ -12,7 +12,28 @@ using Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// ── Environment Variables Support ────────────────────────────────────────────
+// ASP.NET Core Configuration reads environment variables natively.
+// Environment variables use __ prefix to override nested JSON config:
+//   ConnectionStrings__DefaultConnection
+//   Jwt__Key
+//   etc.
+//
+// For Render/Docker: Set environment variables directly in dashboard
+// For local dev: Copy .env.example to .env and use a launch profile
+
+// Add environment variables to configuration (ASP.NET Core native support)
+// This must come before building to ensure env vars take precedence
+builder.Configuration.AddEnvironmentVariables();
+
+// Add environment-specific settings override
+var envSpecificSettings = $"appsettings.{builder.Environment.EnvironmentName}.json";
+if (File.Exists(Path.Combine(builder.Environment.ContentRootPath, envSpecificSettings)))
+{
+    builder.Configuration.AddJsonFile(envSpecificSettings, optional: true, reloadOnChange: true);
+}
+
+// ── Service Configuration ─────────────────────────────────────────────────────
 
 builder.Services.AddDbContext<HotWaterGasDBContext>(options =>
 {
@@ -25,15 +46,16 @@ builder.Services.AddDbContext<HotWaterGasDBContext>(options =>
     options.UseSqlServer(connectionString);
 });
 
+// ── CORS Configuration ─────────────────────────────────────────────────────────
+// Get allowed origins from configuration (supports environment variables)
+var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:5173", "http://localhost:3000", "http://localhost:5140" };
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173",
-                          "http://localhost:3000",
-                          "http://localhost:5140",
-                          "https://localhost:7268",
-                          "https://hot-water-gas-fe.vercel.app/")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
@@ -55,42 +77,54 @@ builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.Configure<Services.DTOs.CloudinaryOptions>(
     builder.Configuration.GetSection("Cloudinary"));
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
+// ── Swagger Configuration ───────────────────────────────────────────────────────
+// Only enable Swagger in Development environment
+var enableSwagger = builder.Configuration.GetValue<bool>("ASPNETCORE_ENABLE_SWAGGER", 
+    builder.Environment.IsDevelopment());
+
+if (enableSwagger)
 {
-    options.SwaggerDoc("v1", new() { Title = "HotWaterGas API", Version = "v1" });
-
-    // JWT Bearer authentication security definition
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(options =>
     {
-        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
-        Name = "Authorization",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT"
-    });
+        options.SwaggerDoc("v1", new() { Title = "HotWaterGas API", Version = "v1" });
 
-    // Apply security requirement globally to all operations
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
+        // JWT Bearer authentication security definition
+        options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
         {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
+            Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
+            Name = "Authorization",
+            In = ParameterLocation.Header,
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT"
+        });
 
-    // Tell Swagger that [FromForm] IFormFile parameters are file uploads
-    options.OperationFilter<FormFileOperationFilter>();
-});
+        // Apply security requirement globally to all operations
+        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
+
+        // Tell Swagger that [FromForm] IFormFile parameters are file uploads
+        options.OperationFilter<FormFileOperationFilter>();
+    });
+}
+else
+{
+    // Still need AddEndpointsApiExplorer for minimalapi fallback, but skip SwaggerGen
+    builder.Services.AddEndpointsApiExplorer();
+}
 
 // ── Startup validation: MailerSend ─────────────────────────────────────────────
 var mailerSendApiToken = builder.Configuration["MailerSend:ApiToken"] ?? string.Empty;
@@ -160,11 +194,15 @@ app.Logger.LogInformation(
     "[MailerSend.Config] ApiTokenExists=true ApiTokenPreview={TokenPreview} FromEmail={FromEmail} FromName={FromName}",
     maskedToken, mailerSendFromEmail, mailerSendFromName);
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// ── Swagger UI ─────────────────────────────────────────────────────────────────
+if (enableSwagger)
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "HotWaterGas API v1");
+        options.RoutePrefix = "swagger";
+    });
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -172,8 +210,11 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 // CORS must be before UseHttpsRedirection for preflight requests to work
 app.UseCors("AllowFrontend");
 
-// Don't force HTTPS redirect in development to avoid mixed-protocol issues
-if (!app.Environment.IsDevelopment())
+// ── HTTPS Redirection (configurable) ──────────────────────────────────────────
+var forceHttps = builder.Configuration.GetValue<bool>("ASPNETCORE_FORCE_HTTPS_REDIRECTION", 
+    !builder.Environment.IsDevelopment());
+    
+if (forceHttps)
 {
     app.UseHttpsRedirection();
 }
