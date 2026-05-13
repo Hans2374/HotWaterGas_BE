@@ -12,7 +12,7 @@ using Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── Environment Variables Support ────────────────────────────────────────────
+// ── Configuration Loading ───────────────────────────────────────────────────────
 // ASP.NET Core Configuration reads environment variables natively.
 // Environment variables use __ prefix to override nested JSON config:
 //   ConnectionStrings__DefaultConnection
@@ -23,30 +23,29 @@ var builder = WebApplication.CreateBuilder(args);
 // For local dev: Copy .env.example to .env and use a launch profile
 
 // Add environment variables to configuration (ASP.NET Core native support)
-// This must come before building to ensure env vars take precedence
 builder.Configuration.AddEnvironmentVariables();
 
-// Add environment-specific settings override
+// Add environment-specific settings override (e.g., appsettings.Development.json)
 var envSpecificSettings = $"appsettings.{builder.Environment.EnvironmentName}.json";
 if (File.Exists(Path.Combine(builder.Environment.ContentRootPath, envSpecificSettings)))
 {
     builder.Configuration.AddJsonFile(envSpecificSettings, optional: true, reloadOnChange: true);
 }
 
-// ── Service Configuration ─────────────────────────────────────────────────────
+// ── Database Configuration ───────────────────────────────────────────────────────
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "ConnectionStrings:DefaultConnection is not configured. " +
+        "Set the ConnectionStrings__DefaultConnection environment variable " +
+        "or add a DefaultConnection to appsettings.json.");
+}
 
 builder.Services.AddDbContext<HotWaterGasDBContext>(options =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    if (string.IsNullOrWhiteSpace(connectionString))
-    {
-        throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
-    }
+    options.UseNpgsql(connectionString));
 
-    options.UseSqlServer(connectionString);
-});
-
-// ── CORS Configuration ─────────────────────────────────────────────────────────
+// ── CORS Configuration ──────────────────────────────────────────────────────────
 // Get allowed origins from configuration (supports environment variables)
 var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>()
     ?? new[] { "http://localhost:5173", "http://localhost:3000", "http://localhost:5140", "https://hot-water-gas-fe.vercel.app" };
@@ -77,9 +76,9 @@ builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.Configure<Services.DTOs.CloudinaryOptions>(
     builder.Configuration.GetSection("Cloudinary"));
 
-// ── Swagger Configuration ───────────────────────────────────────────────────────
+// ── Swagger Configuration ────────────────────────────────────────────────────────
 // Only enable Swagger in Development environment
-var enableSwagger = builder.Configuration.GetValue<bool>("ASPNETCORE_ENABLE_SWAGGER", 
+var enableSwagger = builder.Configuration.GetValue<bool>("ASPNETCORE_ENABLE_SWAGGER",
     builder.Environment.IsDevelopment());
 
 if (enableSwagger)
@@ -141,7 +140,7 @@ if (missingMailerSendKeys.Count > 0)
     throw new InvalidOperationException($"MailerSend configuration missing: {string.Join(", ", missingMailerSendKeys)}");
 }
 
-// ── Startup validation: Cloudinary ───────────────────────────────────────────
+// ── Startup validation: Cloudinary ─────────────────────────────────────────────
 var cloudinaryCloudName = builder.Configuration["Cloudinary:CloudName"] ?? string.Empty;
 var cloudinaryApiKey = builder.Configuration["Cloudinary:ApiKey"] ?? string.Empty;
 var cloudinaryApiSecret = builder.Configuration["Cloudinary:ApiSecret"] ?? string.Empty;
@@ -210,10 +209,10 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 // CORS must be before UseHttpsRedirection for preflight requests to work
 app.UseCors("AllowFrontend");
 
-// ── HTTPS Redirection (configurable) ──────────────────────────────────────────
-var forceHttps = builder.Configuration.GetValue<bool>("ASPNETCORE_FORCE_HTTPS_REDIRECTION", 
+// ── HTTPS Redirection (configurable) ───────────────────────────────────────────
+var forceHttps = builder.Configuration.GetValue<bool>("ASPNETCORE_FORCE_HTTPS_REDIRECTION",
     !builder.Environment.IsDevelopment());
-    
+
 if (forceHttps)
 {
     app.UseHttpsRedirection();
@@ -222,7 +221,7 @@ if (forceHttps)
 app.UseAuthentication();
 app.UseAuthorization();
 
-// ── Health Check Endpoint (for Docker/Render) ────────────────────────────────
+// ── Health Check Endpoint (for Docker/Render) ──────────────────────────────────
 app.MapGet("/health", () => Results.Ok(new
 {
     status = "healthy",

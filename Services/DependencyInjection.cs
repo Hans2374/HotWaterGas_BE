@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<IAdminProductService, AdminProductService>();
         services.AddScoped<IAdminCategoryService, AdminCategoryService>();
         services.AddScoped<IAdminTagService, AdminTagService>();
+        services.AddScoped<IAdminRoleService, AdminRoleService>();
         services.AddScoped<IAdminDiscountService, AdminDiscountService>();
         services.AddScoped<ICheckoutService, CheckoutService>();
         services.AddScoped<ISteamKeyService, SteamKeyService>();

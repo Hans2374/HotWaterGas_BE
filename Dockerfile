@@ -6,7 +6,7 @@
 # - ASP.NET Core: 8.0.11
 # - Project: HotWaterGas_BE.csproj (Web API)
 # - Output DLL: HotWaterGas_BE.dll
-# - Dependencies: EF Core 8.0.5, SQL Server, JWT, Swagger, PayOS, Cloudinary
+# - Dependencies: EF Core 8.0.5, PostgreSQL (Npgsql), JWT, Swagger, PayOS, Cloudinary
 # =============================================================================
 
 # ── Stage 1: Build ──────────────────────────────────────────────────────────
