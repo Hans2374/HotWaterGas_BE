@@ -222,6 +222,14 @@ if (forceHttps)
 app.UseAuthentication();
 app.UseAuthorization();
 
+// ── Health Check Endpoint (for Docker/Render) ────────────────────────────────
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "healthy",
+    timestamp = DateTime.UtcNow,
+    version = "1.0.0"
+}));
+
 app.MapControllers();
 
 app.Run();

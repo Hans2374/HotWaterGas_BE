@@ -1,0 +1,81 @@
+# =============================================================================
+# Docker Ignore for .NET Projects
+# Optimized for ASP.NET Core Web API
+# =============================================================================
+
+# Build outputs
+bin/
+obj/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Visual Studio
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# IDE
+.idea/
+*.swp
+*~
+
+# .NET specific
+*.log
+*.cache
+*.tmp
+
+# NuGet
+*.nupkg
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Documentation
+README.md
+LICENSE
+*.md
+
+# Environment files (NEVER include secrets in Docker image)
+.env
+.env.*
+!.env.example
+!.env.production
+
+# appsettings files with secrets
+appsettings.json
+appsettings.Development.json
+appsettings.Local.json
+
+# Security
+*.pem
+*.key
+*.pfx
+*.crt
+*.cer
+credentials.json
+secrets.json
+
+# Platform
+.DS_Store
+Thumbs.db
+
+# Node (if frontend is in same repo)
+node_modules/
+
+# Test
+*.tests/
+TestResults/
+coverage/
+
+# Misc
+*.tmp
+*.temp
+*.bak
