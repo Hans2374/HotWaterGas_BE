@@ -32,7 +32,8 @@ builder.Services.AddCors(options =>
         policy.WithOrigins("http://localhost:5173",
                           "http://localhost:3000",
                           "http://localhost:5140",
-                          "https://localhost:7268")
+                          "https://localhost:7268",
+                          "https://hot-water-gas-fe.vercel.app/")
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
