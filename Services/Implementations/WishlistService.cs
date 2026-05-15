@@ -33,6 +33,9 @@ public class WishlistService : IWishlistService
             .Include(w => w.WishlistItems)
                 .ThenInclude(wi => wi.Product)
                     .ThenInclude(p => p!.ProductImages)
+            .Include(w => w.WishlistItems)
+                .ThenInclude(wi => wi.Product)
+                    .ThenInclude(p => p!.SteamKeys)
             .FirstOrDefaultAsync(w => w.UserId == userId, cancellationToken);
 
         if (wishlist is null)
@@ -140,14 +143,14 @@ public class WishlistService : IWishlistService
         var product = item.Product as Products;
         var createdAt = item.CreatedAt;
 
-        var discountPercentage = product?.Discount != null 
-            && product.Discount.StartDate <= now 
+        var discountPercentage = product?.Discount != null
+            && product.Discount.StartDate <= now
             && product.Discount.EndDate >= now
             ? (decimal?)product.Discount.Percentage
             : null;
 
         var basePrice = product?.Price ?? 0;
-        var finalPrice = discountPercentage.HasValue 
+        var finalPrice = discountPercentage.HasValue
             ? Math.Round(basePrice * (1 - (discountPercentage.Value / 100m)), 0, MidpointRounding.AwayFromZero)
             : basePrice;
 
@@ -156,6 +159,10 @@ public class WishlistService : IWishlistService
             .ThenBy(i => i.DisplayOrder)
             .Select(i => i.ImageUrl)
             .FirstOrDefault() ?? string.Empty;
+
+        // Compute actual available stock from Steam keys (canonical source)
+        var computedStock = product?.SteamKeys
+            .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null) ?? 0;
 
         return new WishlistItemResponse
         {
@@ -167,7 +174,7 @@ public class WishlistService : IWishlistService
             DiscountPercentage = discountPercentage ?? 0,
             DiscountPrice = discountPercentage.HasValue ? finalPrice : 0,
             HasDiscount = discountPercentage.HasValue,
-            IsInStock = (product?.Stock ?? 0) > 0,
+            InStock = computedStock > 0,
             AddedAt = createdAt
         };
     }

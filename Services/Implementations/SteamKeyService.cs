@@ -17,6 +17,18 @@ public class SteamKeyService : ISteamKeyService
         _logger = logger;
     }
 
+    private async Task SyncProductStockAsync(Guid productId, CancellationToken cancellationToken = default)
+    {
+        var availableCount = await _dbContext.SteamKeys
+            .CountAsync(sk => sk.ProductId == productId && sk.Status == (int)SteamKeyStatus.Available, cancellationToken);
+
+        var product = await _dbContext.Products.FindAsync(new object[] { productId }, cancellationToken);
+        if (product != null)
+        {
+            product.Stock = availableCount;
+        }
+    }
+
     public async Task<SteamKeyBulkUploadResponse> BulkUploadAsync(
         Guid productId,
         List<string> keyValues,
@@ -56,6 +68,7 @@ public class SteamKeyService : ISteamKeyService
         {
             _dbContext.SteamKeys.AddRange(toInsert);
             await _dbContext.SaveChangesAsync(cancellationToken);
+            await SyncProductStockAsync(productId, cancellationToken);
         }
 
         var duplicateCount = normalized.Count(
@@ -200,6 +213,7 @@ public class SteamKeyService : ISteamKeyService
         key.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await SyncProductStockAsync(productId, cancellationToken);
 
         _logger?.LogInformation(
             "[SteamKeys.Update] KeyId={KeyId} ProductId={ProductId}",
@@ -240,6 +254,7 @@ public class SteamKeyService : ISteamKeyService
         key.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await SyncProductStockAsync(productId, cancellationToken);
 
         _logger?.LogInformation(
             "[SteamKeys.Disable] KeyId={KeyId} ProductId={ProductId}",
@@ -268,6 +283,7 @@ public class SteamKeyService : ISteamKeyService
         key.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await SyncProductStockAsync(productId, cancellationToken);
 
         _logger?.LogInformation(
             "[SteamKeys.Enable] KeyId={KeyId} ProductId={ProductId}",
@@ -294,6 +310,7 @@ public class SteamKeyService : ISteamKeyService
 
         _dbContext.SteamKeys.Remove(key);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await SyncProductStockAsync(productId, cancellationToken);
 
         _logger?.LogInformation(
             "[SteamKeys.Delete] KeyId={KeyId} ProductId={ProductId}",

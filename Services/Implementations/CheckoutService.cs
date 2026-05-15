@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using PayOS;
 using PayOS.Models;
 using PayOS.Models.V2.PaymentRequests;
@@ -15,15 +16,18 @@ public class CheckoutService : ICheckoutService
     private readonly HotWaterGasDBContext _dbContext;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<CheckoutService>? _logger;
 
     public CheckoutService(
         HotWaterGasDBContext dbContext,
         IHttpContextAccessor httpContextAccessor,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILogger<CheckoutService>? logger = null)
     {
         _dbContext = dbContext;
         _httpContextAccessor = httpContextAccessor;
         _configuration = configuration;
+        _logger = logger;
     }
 
     public async Task<CheckoutPreviewResponse> PreviewCheckoutAsync(
@@ -50,6 +54,8 @@ public class CheckoutService : ICheckoutService
                 .ThenInclude(p => p!.Discount)
             .Include(ci => ci.Product)
                 .ThenInclude(p => p!.ProductImages)
+            .Include(ci => ci.Product)
+                .ThenInclude(p => p!.SteamKeys)
             .Where(ci => ci.Cart!.UserId == userId && cartItemIdSet.Contains(ci.Id))
             .ToListAsync(cancellationToken);
 
@@ -91,7 +97,11 @@ public class CheckoutService : ICheckoutService
                 .Select(i => i.ImageUrl)
                 .FirstOrDefault() ?? string.Empty;
 
-            if (ci.Product.Stock < ci.Quantity)
+            // Compute actual available stock from Steam keys (canonical source)
+            var computedStock = ci.Product.SteamKeys
+                .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null);
+
+            if (computedStock < ci.Quantity)
             {
                 invalidItems.Add(new CheckoutInvalidItemResponse
                 {
@@ -99,7 +109,7 @@ public class CheckoutService : ICheckoutService
                     ProductId = ci.ProductId,
                     ProductName = ci.Product.Name,
                     ReasonCode = "INSUFFICIENT_STOCK",
-                    Message = $"Only {ci.Product.Stock} unit(s) in stock. Requested: {ci.Quantity}."
+                    Message = $"Only {computedStock} unit(s) in stock. Requested: {ci.Quantity}."
                 });
                 continue;
             }
@@ -176,6 +186,8 @@ public class CheckoutService : ICheckoutService
             .Include(ci => ci.Cart)
             .Include(ci => ci.Product)
                 .ThenInclude(p => p!.Discount)
+            .Include(ci => ci.Product)
+                .ThenInclude(p => p!.SteamKeys)
             .Where(ci => ci.Cart!.UserId == userId && idSet.Contains(ci.Id))
             .ToListAsync(cancellationToken);
 
@@ -195,10 +207,14 @@ public class CheckoutService : ICheckoutService
                 throw new InvalidOperationException($"Product '{ci.Product?.Name ?? "Unknown"}' is no longer available.");
             }
 
-            if (ci.Product.Stock < ci.Quantity)
+            // Compute actual available stock from Steam keys (canonical source)
+            var computedStock = ci.Product.SteamKeys
+                .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null);
+
+            if (computedStock < ci.Quantity)
             {
                 throw new InvalidOperationException(
-                    $"Insufficient stock for '{ci.Product.Name}': {ci.Product.Stock} available, {ci.Quantity} requested.");
+                    $"Insufficient stock for '{ci.Product.Name}': {computedStock} available, {ci.Quantity} requested.");
             }
 
             var isActiveDiscount = ci.Product.Discount != null
@@ -336,10 +352,9 @@ public class CheckoutService : ICheckoutService
         _dbContext.OrderItems.AddRange(orderItems);
         _dbContext.PaymentTransactions.Add(paymentTransaction);
 
-        foreach (var ci in cartItems)
-        {
-            ci.Product!.Stock -= ci.Quantity;
-        }
+        // NOTE: Do NOT decrement Products.Stock here.
+        // Stock is derived from available Steam keys and is updated when keys are actually
+        // consumed during fulfillment in ProcessPaymentReturnAsync.
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -493,6 +508,14 @@ public class CheckoutService : ICheckoutService
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
+            // Sync Products.Stock for all affected products after key consumption
+            var affectedProductIds = order.OrderItems.Select(oi => oi.ProductId).Distinct().ToList();
+            foreach (var productId in affectedProductIds)
+            {
+                await SyncProductStockAsync(productId, cancellationToken);
+            }
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
             return new PaymentReturnResponse
             {
                 Success = true,
@@ -509,18 +532,8 @@ public class CheckoutService : ICheckoutService
             order.UpdatedAt = DateTime.UtcNow;
             pt.UpdatedAt = DateTime.UtcNow;
 
-            var orderItems = await _dbContext.OrderItems
-                .Where(oi => oi.OrderId == order.Id)
-                .ToListAsync(cancellationToken);
-
-            foreach (var oi in orderItems)
-            {
-                var product = await _dbContext.Products.FindAsync(new object[] { oi.ProductId }, cancellationToken);
-                if (product != null)
-                {
-                    product.Stock += oi.Quantity;
-                }
-            }
+            // NOTE: Products.Stock was never decremented during payment creation,
+            // so no restoration needed here. Keys were never consumed.
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -539,18 +552,8 @@ public class CheckoutService : ICheckoutService
         order.UpdatedAt = DateTime.UtcNow;
         pt.UpdatedAt = DateTime.UtcNow;
 
-        var failedOrderItems = await _dbContext.OrderItems
-            .Where(oi => oi.OrderId == order.Id)
-            .ToListAsync(cancellationToken);
-
-        foreach (var oi in failedOrderItems)
-        {
-            var product = await _dbContext.Products.FindAsync(new object[] { oi.ProductId }, cancellationToken);
-            if (product != null)
-            {
-                product.Stock += oi.Quantity;
-            }
-        }
+        // NOTE: Products.Stock was never decremented during payment creation,
+        // so no restoration needed here. Keys were never consumed.
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -573,6 +576,21 @@ public class CheckoutService : ICheckoutService
         CanProceed = false,
         BlockingMessages = new List<string>()
     };
+
+    private async Task SyncProductStockAsync(Guid productId, CancellationToken cancellationToken = default)
+    {
+        var availableCount = await _dbContext.SteamKeys
+            .CountAsync(sk => sk.ProductId == productId && sk.Status == 0, cancellationToken);
+
+        var product = await _dbContext.Products.FindAsync(new object[] { productId }, cancellationToken);
+        if (product != null && product.Stock != availableCount)
+        {
+            _logger?.LogWarning(
+                "[CheckoutService.StockSync] ProductId={ProductId} OldStock={OldStock} NewStock={NewStock}",
+                productId, product.Stock, availableCount);
+            product.Stock = availableCount;
+        }
+    }
 
     private Guid GetCurrentUserId()
     {

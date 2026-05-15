@@ -79,7 +79,7 @@ public class ProductCatalogService : IProductCatalogService
                 p.Name,
                 p.Slug,
                 p.Price,
-                p.Stock,
+                AvailableKeyCount = p.SteamKeys.Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null),
                 DiscountPercentage = p.Discount != null && p.Discount.StartDate <= now && p.Discount.EndDate >= now
                     ? (decimal?)p.Discount.Percentage
                     : null,
@@ -105,9 +105,8 @@ public class ProductCatalogService : IProductCatalogService
                     DiscountPrice = p.DiscountPercentage.HasValue ? finalPrice : null,
                     DiscountPercentage = p.DiscountPercentage,
                     PrimaryImageUrl = p.PrimaryImageUrl ?? string.Empty,
-                    Stock = p.Stock,
-                    IsInStock = p.Stock > 0,
-                    InStock = p.Stock > 0
+                    Stock = p.AvailableKeyCount,
+                    InStock = p.AvailableKeyCount > 0
                 };
 
                 return item;
@@ -140,6 +139,7 @@ public class ProductCatalogService : IProductCatalogService
             .Include(p => p.Reviews)
             .Include(p => p.OrderItems)
             .Include(p => p.Discount)
+            .Include(p => p.SteamKeys)
             .FirstOrDefaultAsync(p => !p.IsDeleted && p.Slug == slug, cancellationToken);
 
         if (product is null)
@@ -154,6 +154,10 @@ public class ProductCatalogService : IProductCatalogService
         var basePrice = product.Price;
         var finalPrice = CalculateFinalPrice(basePrice, discountPercentage);
 
+        // Compute actual available stock from Steam keys (canonical source)
+        var computedStock = product.SteamKeys
+            .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null);
+
         var response = new ProductDetailResponse
         {
             Id = product.Id,
@@ -162,7 +166,7 @@ public class ProductCatalogService : IProductCatalogService
             Subtitle = product.ProductMetadatas?.Publisher ?? string.Empty,
             Rating = product.Reviews.Count == 0 ? 0 : decimal.Round((decimal)product.Reviews.Average(r => r.Rating), 1),
             SoldCount = product.OrderItems.Sum(oi => oi.Quantity),
-            HasStock = product.Stock > 0,
+            HasStock = computedStock > 0,
             Price = new ProductPriceResponse
             {
                 BasePrice = basePrice,
@@ -256,7 +260,7 @@ public class ProductCatalogService : IProductCatalogService
                 p.Name,
                 p.Slug,
                 p.Price,
-                p.Stock,
+                AvailableKeyCount = p.SteamKeys.Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null),
                 DiscountPercentage = p.Discount != null && p.Discount.StartDate <= now && p.Discount.EndDate >= now
                     ? (decimal?)p.Discount.Percentage
                     : null,
@@ -282,9 +286,8 @@ public class ProductCatalogService : IProductCatalogService
                     DiscountPrice = p.DiscountPercentage.HasValue ? finalPrice : null,
                     DiscountPercentage = p.DiscountPercentage,
                     PrimaryImageUrl = p.PrimaryImageUrl ?? string.Empty,
-                    Stock = p.Stock,
-                    IsInStock = p.Stock > 0,
-                    InStock = p.Stock > 0
+                    Stock = p.AvailableKeyCount,
+                    InStock = p.AvailableKeyCount > 0
                 };
             })
             .ToList();

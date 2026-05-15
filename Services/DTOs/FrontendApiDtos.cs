@@ -47,7 +47,7 @@ public class WishlistItemResponse
     public decimal DiscountPercentage { get; set; }
     public decimal DiscountPrice { get; set; }
     public bool HasDiscount { get; set; }
-    public bool IsInStock { get; set; }
+    public bool InStock { get; set; }
     public DateTime AddedAt { get; set; }
 }
 

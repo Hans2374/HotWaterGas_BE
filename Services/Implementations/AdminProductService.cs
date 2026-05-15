@@ -69,12 +69,12 @@ public class AdminProductService : IAdminProductService
             productsQuery = productsQuery.Where(p => p.Category.Any(c => c.Id == query.CategoryId.Value));
         }
 
-        // Pre-compute available key counts
+        // Pre-compute available key counts (only truly available keys)
         var productsWithCounts = productsQuery
             .Select(p => new
             {
                 Product = p,
-                AvailableKeyCount = p.SteamKeys.Count(k => k.Status == 0)
+                AvailableKeyCount = p.SteamKeys.Count(k => k.Status == 0 && k.OrderId == null && k.InvalidatedAt == null)
             })
             .ToList();
 
@@ -102,7 +102,8 @@ public class AdminProductService : IAdminProductService
                     ? Math.Round(x.Product.Price * (1 - (x.Product.Discount.Percentage / 100m)), 0, MidpointRounding.AwayFromZero)
                     : null,
                 HasDiscount = x.Product.Discount != null && x.Product.Discount.StartDate <= now && x.Product.Discount.EndDate >= now,
-                Stock = x.Product.Stock,
+                // Stock is now derived from actual available keys (canonical source)
+                Stock = x.AvailableKeyCount,
                 AvailableSteamKeyCount = x.AvailableKeyCount,
                 IsDeleted = x.Product.IsDeleted,
                 UpdatedAt = x.Product.UpdatedAt,
@@ -155,7 +156,7 @@ public class AdminProductService : IAdminProductService
             .Select(p => new
             {
                 Product = p,
-                AvailableKeyCount = p.SteamKeys.Count(k => k.Status == 0)
+                AvailableKeyCount = p.SteamKeys.Count(k => k.Status == 0 && k.OrderId == null && k.InvalidatedAt == null)
             })
             .ToListAsync(cancellationToken);
 
@@ -174,7 +175,8 @@ public class AdminProductService : IAdminProductService
                     ? Math.Round(x.Product.Price * (1 - (x.Product.Discount.Percentage / 100m)), 0, MidpointRounding.AwayFromZero)
                     : null,
                 HasDiscount = x.Product.Discount != null && x.Product.Discount.StartDate <= now && x.Product.Discount.EndDate >= now,
-                Stock = x.Product.Stock,
+                // Stock is now derived from actual available keys (canonical source)
+                Stock = x.AvailableKeyCount,
                 AvailableSteamKeyCount = x.AvailableKeyCount,
                 IsDeleted = x.Product.IsDeleted,
                 UpdatedAt = x.Product.UpdatedAt,
@@ -210,6 +212,7 @@ public class AdminProductService : IAdminProductService
             .Include(p => p.Category)
             .Include(p => p.Tag)
             .Include(p => p.Discount)
+            .Include(p => p.SteamKeys)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
 
         if (product is null)
@@ -221,6 +224,10 @@ public class AdminProductService : IAdminProductService
             ? (decimal?)product.Discount.Percentage
             : null;
 
+        // Compute actual available stock from Steam keys (canonical source)
+        var computedStock = product.SteamKeys
+            .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null);
+
         return new AdminProductDetailResponse
         {
             Id = product.Id,
@@ -231,7 +238,8 @@ public class AdminProductService : IAdminProductService
             Price = product.Price,
             DiscountPercentage = discountPercentage,
             DiscountId = product.Discount?.Id,
-            Stock = product.Stock,
+            // Stock is now derived from actual available keys (canonical source)
+            Stock = computedStock,
             Metadata = new AdminProductMetadataResponse
             {
                 Publisher = product.ProductMetadatas?.Publisher ?? string.Empty,

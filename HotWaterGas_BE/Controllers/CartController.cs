@@ -30,6 +30,7 @@ public class CartController : ControllerBase
         [FromBody] AddToCartRequest request,
         CancellationToken cancellationToken = default)
     {
+        // Returns full CartResponse for frontend state consistency
         var response = await _cartService.AddToCartAsync(request.ProductId, request.Quantity, cancellationToken);
         return Ok(response);
     }

@@ -33,6 +33,9 @@ public class CartService : ICartService
             .Include(c => c.CartItems)
                 .ThenInclude(ci => ci.Product)
                     .ThenInclude(p => p!.ProductImages)
+            .Include(c => c.CartItems)
+                .ThenInclude(ci => ci.Product)
+                    .ThenInclude(p => p!.SteamKeys)
             .FirstOrDefaultAsync(c => c.UserId == userId && !c.IsCheckedOut, cancellationToken);
 
         if (cart is null)
@@ -63,7 +66,7 @@ public class CartService : ICartService
         };
     }
 
-    public async Task<CartItemResponse> AddToCartAsync(Guid productId, int quantity, CancellationToken cancellationToken = default)
+    public async Task<CartResponse> AddToCartAsync(Guid productId, int quantity, CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
         if (userId == Guid.Empty)
@@ -106,22 +109,23 @@ public class CartService : ICartService
         {
             existingItem.Quantity += quantity;
             await _dbContext.SaveChangesAsync(cancellationToken);
-            
-            return await GetCartItemResponseAsync(existingItem.Id, cancellationToken);
+        }
+        else
+        {
+            var cartItem = new CartItems
+            {
+                Id = Guid.NewGuid(),
+                CartId = cart.Id,
+                ProductId = productId,
+                Quantity = quantity
+            };
+
+            _dbContext.CartItems.Add(cartItem);
+            await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        var cartItem = new CartItems
-        {
-            Id = Guid.NewGuid(),
-            CartId = cart.Id,
-            ProductId = productId,
-            Quantity = quantity
-        };
-
-        _dbContext.CartItems.Add(cartItem);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return await GetCartItemResponseAsync(cartItem.Id, cancellationToken);
+        // Return full cart response for frontend state consistency
+        return await GetMyCartAsync(cancellationToken);
     }
 
     public async Task<CartItemResponse> UpdateCartItemQuantityAsync(Guid productId, int quantity, CancellationToken cancellationToken = default)
@@ -229,15 +233,15 @@ public class CartService : ICartService
     private static CartItemResponse MapToCartItemResponse(CartItems item, DateTime now)
     {
         var product = item.Product;
-        
-        var discountPercentage = product?.Discount != null 
-            && product.Discount.StartDate <= now 
+
+        var discountPercentage = product?.Discount != null
+            && product.Discount.StartDate <= now
             && product.Discount.EndDate >= now
             ? (decimal?)product.Discount.Percentage
             : null;
 
         var basePrice = product?.Price ?? 0;
-        var finalPrice = discountPercentage.HasValue 
+        var finalPrice = discountPercentage.HasValue
             ? Math.Round(basePrice * (1 - (discountPercentage.Value / 100m)), 0, MidpointRounding.AwayFromZero)
             : basePrice;
 
@@ -246,6 +250,10 @@ public class CartService : ICartService
             .ThenBy(i => i.DisplayOrder)
             .Select(i => i.ImageUrl)
             .FirstOrDefault() ?? string.Empty;
+
+        // Compute actual available stock from Steam keys (canonical source)
+        var computedStock = product?.SteamKeys
+            .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null) ?? 0;
 
         return new CartItemResponse
         {
@@ -257,7 +265,7 @@ public class CartService : ICartService
             FinalPrice = finalPrice,
             Quantity = item.Quantity,
             Subtotal = finalPrice * item.Quantity,
-            InStock = (product?.Stock ?? 0) > 0
+            InStock = computedStock > 0
         };
     }
 

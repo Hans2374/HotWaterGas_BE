@@ -33,7 +33,6 @@ public class ProductCatalogItemResponse
     public decimal? DiscountPrice { get; set; }
     public decimal? DiscountPercentage { get; set; }
     public string PrimaryImageUrl { get; set; } = string.Empty;
-    public bool IsInStock { get; set; }
     public bool InStock { get; set; }
     public int Stock { get; set; }
 }
