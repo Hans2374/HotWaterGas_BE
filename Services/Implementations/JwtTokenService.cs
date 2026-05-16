@@ -32,7 +32,8 @@ public class JwtTokenService : IJwtTokenService
         {
             new("UserId", user.Id.ToString()),
             new(ClaimTypes.Email, user.Email),
-            new(ClaimTypes.Role, roleName)
+            new(ClaimTypes.Role, roleName),
+            new("displayName", user.DisplayName)
         };
 
         var expiresAt = DateTime.UtcNow.AddMinutes(_jwtOptions.AccessTokenExpiryMinutes);

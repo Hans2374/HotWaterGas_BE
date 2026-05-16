@@ -19,6 +19,8 @@ public partial class Users
 
     public bool IsEmailVerified { get; set; }
 
+    public string DisplayName { get; set; } = string.Empty;
+
     public virtual Carts Carts { get; set; }
 
     public virtual EmailVerifications EmailVerifications { get; set; }

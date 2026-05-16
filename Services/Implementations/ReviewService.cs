@@ -38,17 +38,18 @@ public class ReviewService : IReviewService
             .OrderByDescending(r => r.CreatedAt)
             .Skip((safePage - 1) * safePageSize)
             .Take(safePageSize)
-            .Select(r => new ReviewItemResponse
-            {
-                Id = r.Id,
-                UserDisplayName = r.User.Email,
-                Rating = r.Rating,
-                Comment = r.Comment,
-                CreatedAt = r.CreatedAt,
-                IsEdited = r.IsEdited,
-                IsMine = r.UserId == currentUserId
-            })
             .ToListAsync(cancellationToken);
+
+        var reviewResponses = reviews.Select(r => new ReviewItemResponse
+        {
+            Id = r.Id,
+            UserDisplayName = GetDisplayNameOrFallback(r.User),
+            Rating = r.Rating,
+            Comment = r.Comment,
+            CreatedAt = r.CreatedAt,
+            IsEdited = r.IsEdited,
+            IsMine = r.UserId == currentUserId
+        }).ToList();
 
         var totalPages = totalReviews == 0 ? 0 : (int)Math.Ceiling(totalReviews / (double)safePageSize);
 
@@ -57,7 +58,7 @@ public class ReviewService : IReviewService
             AverageRating = averageRating,
             TotalReviews = totalReviews,
             TotalPages = totalPages,
-            Reviews = reviews
+            Reviews = reviewResponses
         };
     }
 
@@ -109,7 +110,7 @@ public class ReviewService : IReviewService
         return new ReviewItemResponse
         {
             Id = review.Id,
-            UserDisplayName = user?.Email ?? "Anonymous",
+            UserDisplayName = GetDisplayNameOrFallback(user),
             Rating = review.Rating,
             Comment = review.Comment,
             CreatedAt = review.CreatedAt,
@@ -145,13 +146,25 @@ public class ReviewService : IReviewService
         return new ReviewItemResponse
         {
             Id = review.Id,
-            UserDisplayName = review.User?.Email ?? "Anonymous",
+            UserDisplayName = GetDisplayNameOrFallback(review.User),
             Rating = review.Rating,
             Comment = review.Comment,
             CreatedAt = review.CreatedAt,
             IsEdited = review.IsEdited,
             IsMine = true
         };
+    }
+
+    private static string GetDisplayNameOrFallback(Users? user)
+    {
+        if (user == null)
+            return "Anonymous";
+
+        if (!string.IsNullOrEmpty(user.DisplayName))
+            return user.DisplayName;
+
+        var emailPrefix = user.Email?.Split('@')[0];
+        return string.IsNullOrEmpty(emailPrefix) ? "Anonymous" : emailPrefix;
     }
 
     private Guid GetCurrentUserId()

@@ -68,7 +68,8 @@ public class AuthService : IAuthService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             CreatedAt = DateTime.UtcNow,
             RoleId = customerRole.Id,
-            IsEmailVerified = false
+            IsEmailVerified = false,
+            DisplayName = request.DisplayName.Trim()
         };
 
         var verification = new EmailVerifications
@@ -133,6 +134,7 @@ public class AuthService : IAuthService
             {
                 Id = user.Id,
                 Email = user.Email,
+                DisplayName = user.DisplayName,
                 Role = roleName
             }
         };

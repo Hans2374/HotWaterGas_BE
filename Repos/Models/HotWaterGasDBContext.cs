@@ -341,6 +341,7 @@ public partial class HotWaterGasDBContext : DbContext
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Email).IsRequired();
             entity.Property(e => e.PasswordHash).IsRequired();
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(100);
 
             entity.HasOne(d => d.Role).WithMany(p => p.Users)
                 .HasForeignKey(d => d.RoleId)
