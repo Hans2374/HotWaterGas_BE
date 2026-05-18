@@ -196,6 +196,46 @@ public class CheckoutService : ICheckoutService
             throw new ArgumentException("No valid cart items found for the selected IDs.");
         }
 
+        // Prevent duplicate payment attempts: if a pending PaymentTransaction already exists for
+        // an order that contains all of these cart items, reuse the existing checkout URL.
+        var existingPendingTx = await _dbContext.PaymentTransactions
+            .Where(pt => pt.Provider == 1 && pt.Status == 1)
+            .Where(pt => _dbContext.OrderItems.Any(oi => oi.OrderId == pt.OrderId
+                && idSet.Contains(oi.SourceCartItemId!.Value)))
+            .Include(pt => pt.Order)
+            .Where(pt => pt.Order != null && pt.Order!.UserId == userId)
+            .OrderByDescending(pt => pt.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existingPendingTx != null)
+        {
+            var orderItemsCount = await _dbContext.OrderItems
+                .CountAsync(oi => oi.OrderId == existingPendingTx.OrderId, cancellationToken);
+
+            // Only reuse if the existing order has exactly the same cart items we are trying to pay for.
+            if (orderItemsCount == cartItems.Count)
+            {
+                _logger?.LogInformation(
+                    "[CheckoutService.CreatePayment] Reusing existing pending payment. OrderId={OrderId}, TxId={TxId}",
+                    existingPendingTx.OrderId, existingPendingTx.Id);
+
+                var checkoutUrl = await _dbContext.PaymentTransactions
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(pt => pt.Id == existingPendingTx.Id, cancellationToken);
+
+                return new CreatePaymentResponse
+                {
+                    OrderId = existingPendingTx.OrderId,
+                    PaymentTransactionId = existingPendingTx.Id,
+                    PayOSOrderCode = existingPendingTx.ProviderOrderCode,
+                    CheckoutUrl = checkoutUrl?.CheckoutUrl ?? string.Empty,
+                    QrCodeUrl = checkoutUrl?.QrCodeUrl,
+                    Status = "Pending",
+                    ExpiresAt = null
+                };
+            }
+        }
+
         var now = DateTime.UtcNow;
         decimal subtotal = 0;
         var orderItems = new List<OrderItems>();
@@ -352,6 +392,17 @@ public class CheckoutService : ICheckoutService
         _dbContext.OrderItems.AddRange(orderItems);
         _dbContext.PaymentTransactions.Add(paymentTransaction);
 
+        // Mark the cart as checked out to prevent reuse.
+        if (cartItems.Count > 0 && cartItems[0].Cart != null)
+        {
+            var cartId = cartItems[0].Cart.Id;
+            var trackedCart = await _dbContext.Carts.FindAsync(new object[] { cartId }, cancellationToken);
+            if (trackedCart != null)
+            {
+                trackedCart.IsCheckedOut = true;
+            }
+        }
+
         // NOTE: Do NOT decrement Products.Stock here.
         // Stock is derived from available Steam keys and is updated when keys are actually
         // consumed during fulfillment in ProcessPaymentReturnAsync.
@@ -378,6 +429,10 @@ public class CheckoutService : ICheckoutService
         decimal? amountPaid,
         CancellationToken cancellationToken = default)
     {
+        _logger?.LogInformation(
+            "[CheckoutService.PaymentReturn] ENTRY. orderCode={orderCode}, status={status}, success={success}, transactionId={transactionId}",
+            orderCode, status, success, transactionId);
+
         if (string.IsNullOrWhiteSpace(orderCode))
         {
             return new PaymentReturnResponse
@@ -389,11 +444,11 @@ public class CheckoutService : ICheckoutService
             };
         }
 
-        var pt = await _dbContext.PaymentTransactions
-            .AsNoTracking()
+        // Use tracking queries so modifications are saved via SaveChangesAsync.
+        var trackedPt = await _dbContext.PaymentTransactions
             .FirstOrDefaultAsync(p => p.ProviderOrderCode == orderCode, cancellationToken);
 
-        if (pt == null)
+        if (trackedPt == null)
         {
             return new PaymentReturnResponse
             {
@@ -404,13 +459,12 @@ public class CheckoutService : ICheckoutService
             };
         }
 
-        var order = await _dbContext.Orders
-            .AsNoTracking()
+        var trackedOrder = await _dbContext.Orders
             .Include(o => o.OrderItems)
             .Include(o => o.SteamKeys)
-            .FirstOrDefaultAsync(o => o.Id == pt.OrderId, cancellationToken);
+            .FirstOrDefaultAsync(o => o.Id == trackedPt.OrderId, cancellationToken);
 
-        if (order == null)
+        if (trackedOrder == null)
         {
             return new PaymentReturnResponse
             {
@@ -418,6 +472,36 @@ public class CheckoutService : ICheckoutService
                 Message = "Order not found.",
                 OrderCode = orderCode,
                 Status = "not_found"
+            };
+        }
+
+        // Idempotency guard: if order is already completed, return success without reprocessing.
+        if (trackedOrder.Status == 4)
+        {
+            _logger?.LogInformation(
+                "[CheckoutService.PaymentReturn] Idempotent skip for already-completed order. OrderId={OrderId}",
+                trackedOrder.Id);
+            return new PaymentReturnResponse
+            {
+                Success = true,
+                Message = "Order already completed.",
+                OrderCode = orderCode,
+                Status = "PAID"
+            };
+        }
+
+        // Idempotency guard: if order is already cancelled, return cancel response without reprocessing.
+        if (trackedOrder.Status == 0)
+        {
+            _logger?.LogInformation(
+                "[CheckoutService.PaymentReturn] Idempotent skip for already-cancelled order. OrderId={OrderId}",
+                trackedOrder.Id);
+            return new PaymentReturnResponse
+            {
+                Success = false,
+                Message = "Payment was already cancelled.",
+                OrderCode = orderCode,
+                Status = "CANCELLED"
             };
         }
 
@@ -473,18 +557,22 @@ public class CheckoutService : ICheckoutService
 
         if (isPaidSuccess)
         {
-            order.Status = 4;
-            order.FulfilledAt = DateTime.UtcNow;
-            order.UpdatedAt = DateTime.UtcNow;
+            _logger?.LogInformation(
+                "[CheckoutService.PaymentReturn] PAID branch entered. OrderId={OrderId}, ProviderOrderCode={OrderCode}",
+                trackedOrder.Id, orderCode);
 
-            pt.Status = 2;
-            pt.ProviderTransactionId =
+            trackedOrder.Status = 4;
+            trackedOrder.FulfilledAt = DateTime.UtcNow;
+            trackedOrder.UpdatedAt = DateTime.UtcNow;
+
+            trackedPt.Status = 2;
+            trackedPt.ProviderTransactionId =
                 (payOSData.Transactions?.FirstOrDefault() as PaymentTransaction)?.Reference
                 ?? transactionId
                 ?? string.Empty;
-            pt.UpdatedAt = DateTime.UtcNow;
+            trackedPt.UpdatedAt = DateTime.UtcNow;
 
-            foreach (var orderItem in order.OrderItems)
+            foreach (var orderItem in trackedOrder.OrderItems)
             {
                 for (int i = 0; i < orderItem.Quantity; i++)
                 {
@@ -498,8 +586,8 @@ public class CheckoutService : ICheckoutService
 
                     if (availableKey != null)
                     {
-                        availableKey.OrderId = order.Id;
-                        availableKey.Status = 1;
+                        availableKey.OrderId = trackedOrder.Id;
+                        availableKey.Status = 2; // Sold
                         availableKey.UpdatedAt = DateTime.UtcNow;
                         break;
                     }
@@ -509,12 +597,41 @@ public class CheckoutService : ICheckoutService
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             // Sync Products.Stock for all affected products after key consumption
-            var affectedProductIds = order.OrderItems.Select(oi => oi.ProductId).Distinct().ToList();
+            var affectedProductIds = trackedOrder.OrderItems.Select(oi => oi.ProductId).Distinct().ToList();
             foreach (var productId in affectedProductIds)
             {
                 await SyncProductStockAsync(productId, cancellationToken);
             }
+
+            // Remove purchased cart items from the user's cart.
+            var cartItemIdsToRemove = trackedOrder.OrderItems
+                .Where(oi => oi.SourceCartItemId.HasValue)
+                .Select(oi => oi.SourceCartItemId!.Value)
+                .ToList();
+
+            var cartItemsRemovedCount = 0;
+
+            if (cartItemIdsToRemove.Count > 0)
+            {
+                var cartItemsToRemove = await _dbContext.CartItems
+                    .Where(ci => cartItemIdsToRemove.Contains(ci.Id))
+                    .ToListAsync(cancellationToken);
+
+                if (cartItemsToRemove.Count > 0)
+                {
+                    _dbContext.CartItems.RemoveRange(cartItemsToRemove);
+                    cartItemsRemovedCount = cartItemsToRemove.Count;
+                    _logger?.LogInformation(
+                        "[CheckoutService.PaymentReturn] Removed {Count} cart items for completed order. OrderId={OrderId}",
+                        cartItemsToRemove.Count, trackedOrder.Id);
+                }
+            }
+
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger?.LogInformation(
+                "[CheckoutService.PaymentReturn] PAID save complete. OrderId={OrderId}, Order.Status={OrderStatus}, PaymentTx.Status={TxStatus}, CartItemsRemoved={CartItemsRemoved}",
+                trackedOrder.Id, trackedOrder.Status, trackedPt.Status, cartItemsRemovedCount);
 
             return new PaymentReturnResponse
             {
@@ -527,15 +644,36 @@ public class CheckoutService : ICheckoutService
 
         if (isCancelled)
         {
-            order.Status = 0;
-            pt.Status = 3;
-            order.UpdatedAt = DateTime.UtcNow;
-            pt.UpdatedAt = DateTime.UtcNow;
+            _logger?.LogInformation(
+                "[CheckoutService.PaymentReturn] CANCELLED branch entered. OrderId={OrderId}, ProviderOrderCode={OrderCode}",
+                trackedOrder.Id, orderCode);
+
+            trackedOrder.Status = 0;
+            trackedPt.Status = 3;
+            trackedOrder.UpdatedAt = DateTime.UtcNow;
+            trackedPt.UpdatedAt = DateTime.UtcNow;
+
+            // Reset IsCheckedOut so the user's cart becomes visible again after cancellation.
+            // The cart was marked IsCheckedOut=true during CreatePaymentAsync to prevent reuse.
+            // On cancel, the order is dead — the user needs to see their cart again.
+            var trackedCart = await _dbContext.Carts
+                .FirstOrDefaultAsync(c => c.UserId == trackedOrder.UserId && c.IsCheckedOut, cancellationToken);
+            if (trackedCart != null)
+            {
+                _logger?.LogInformation(
+                    "[CheckoutService.PaymentReturn] Resetting IsCheckedOut=false on cart. CartId={CartId}",
+                    trackedCart.Id);
+                trackedCart.IsCheckedOut = false;
+            }
 
             // NOTE: Products.Stock was never decremented during payment creation,
             // so no restoration needed here. Keys were never consumed.
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger?.LogInformation(
+                "[CheckoutService.PaymentReturn] CANCELLED save complete. OrderId={OrderId}, Order.Status={OrderStatus}, PaymentTx.Status={TxStatus}",
+                trackedOrder.Id, trackedOrder.Status, trackedPt.Status);
 
             return new PaymentReturnResponse
             {
@@ -547,10 +685,25 @@ public class CheckoutService : ICheckoutService
         }
 
         // All other PayOS statuses = payment failed.
-        order.Status = 1;
-        pt.Status = 0;
-        order.UpdatedAt = DateTime.UtcNow;
-        pt.UpdatedAt = DateTime.UtcNow;
+        _logger?.LogInformation(
+            "[CheckoutService.PaymentReturn] FAILED branch entered. OrderId={OrderId}, ProviderOrderCode={OrderCode}, PayOSStatus={PayOSStatus}",
+            trackedOrder.Id, orderCode, payOSData.Status);
+
+        trackedOrder.Status = 1;
+        trackedPt.Status = 0;
+        trackedOrder.UpdatedAt = DateTime.UtcNow;
+        trackedPt.UpdatedAt = DateTime.UtcNow;
+
+        // Reset IsCheckedOut so the user's cart becomes visible again after payment failure.
+        var failedCart = await _dbContext.Carts
+            .FirstOrDefaultAsync(c => c.UserId == trackedOrder.UserId && c.IsCheckedOut, cancellationToken);
+        if (failedCart != null)
+        {
+            _logger?.LogInformation(
+                "[CheckoutService.PaymentReturn] Resetting IsCheckedOut=false on failed payment cart. CartId={CartId}",
+                failedCart.Id);
+            failedCart.IsCheckedOut = false;
+        }
 
         // NOTE: Products.Stock was never decremented during payment creation,
         // so no restoration needed here. Keys were never consumed.
