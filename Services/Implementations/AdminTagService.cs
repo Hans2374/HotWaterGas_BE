@@ -288,11 +288,11 @@ public class AdminTagService : IAdminTagService
     {
         if (tagIds.Count == 0) return new Dictionary<Guid, int>();
 
-        var idList = string.Join(",", tagIds.Select(id => $"'{id}'"));
-        var sql = $"SELECT TagId AS TagId, COUNT(*) AS Count FROM ProductTags WHERE TagId IN ({idList}) GROUP BY TagId";
-
-        var results = await _dbContext.Database
-            .SqlQueryRaw<TagIdCount>(sql)
+        var results = await _dbContext.ProductTags
+            .AsNoTracking()
+            .Where(pt => tagIds.Contains(pt.TagId))
+            .GroupBy(pt => pt.TagId)
+            .Select(g => new { TagId = g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken);
 
         return results.ToDictionary(r => r.TagId, r => r.Count);
@@ -300,16 +300,8 @@ public class AdminTagService : IAdminTagService
 
     private async Task<int> CountProductLinksForTagAsync(Guid tagId, CancellationToken cancellationToken)
     {
-        var sql = $"SELECT COUNT(*) FROM ProductTags WHERE TagId = '{tagId}'";
-        var result = await _dbContext.Database
-            .SqlQueryRaw<int>(sql)
-            .ToListAsync(cancellationToken);
-        return result.FirstOrDefault();
-    }
-
-    private class TagIdCount
-    {
-        public Guid TagId { get; set; }
-        public int Count { get; set; }
+        return await _dbContext.ProductTags
+            .AsNoTracking()
+            .CountAsync(pt => pt.TagId == tagId, cancellationToken);
     }
 }

@@ -43,6 +43,10 @@ public partial class HotWaterGasDBContext : DbContext
 
     public virtual DbSet<Products> Products { get; set; }
 
+    public virtual DbSet<ProductCategories> ProductCategories { get; set; }
+
+    public virtual DbSet<ProductTags> ProductTags { get; set; }
+
     public virtual DbSet<Reviews> Reviews { get; set; }
 
     public virtual DbSet<Roles> Roles { get; set; }
@@ -258,26 +262,16 @@ public partial class HotWaterGasDBContext : DbContext
                 .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasMany(d => d.Category).WithMany(p => p.Product)
-                .UsingEntity<Dictionary<string, object>>(
-                    "ProductCategories",
-                    r => r.HasOne<Categories>().WithMany().HasForeignKey("CategoryId"),
-                    l => l.HasOne<Products>().WithMany().HasForeignKey("ProductId"),
-                    j =>
-                    {
-                        j.HasKey("ProductId", "CategoryId");
-                        j.HasIndex(new[] { "CategoryId" }, "IX_ProductCategories_CategoryId");
-                    });
+                .UsingEntity<ProductCategories>(
+                    j => j.HasOne(pc => pc.Category).WithMany().HasForeignKey(pc => pc.CategoryId),
+                    j => j.HasOne(pc => pc.Product).WithMany().HasForeignKey(pc => pc.ProductId),
+                    j => j.HasKey(pc => new { pc.ProductId, pc.CategoryId }));
 
             entity.HasMany(d => d.Tag).WithMany(p => p.Product)
-                .UsingEntity<Dictionary<string, object>>(
-                    "ProductTags",
-                    r => r.HasOne<Tags>().WithMany().HasForeignKey("TagId"),
-                    l => l.HasOne<Products>().WithMany().HasForeignKey("ProductId"),
-                    j =>
-                    {
-                        j.HasKey("ProductId", "TagId");
-                        j.HasIndex(new[] { "TagId" }, "IX_ProductTags_TagId");
-                    });
+                .UsingEntity<ProductTags>(
+                    j => j.HasOne(pt => pt.Tag).WithMany().HasForeignKey(pt => pt.TagId),
+                    j => j.HasOne(pt => pt.Product).WithMany().HasForeignKey(pt => pt.ProductId),
+                    j => j.HasKey(pt => new { pt.ProductId, pt.TagId }));
         });
 
         modelBuilder.Entity<Reviews>(entity =>

@@ -288,11 +288,11 @@ public class AdminCategoryService : IAdminCategoryService
     {
         if (categoryIds.Count == 0) return new Dictionary<Guid, int>();
 
-        var idList = string.Join(",", categoryIds.Select(id => $"'{id}'"));
-        var sql = $"SELECT CategoryId AS CategoryId, COUNT(*) AS Count FROM ProductCategories WHERE CategoryId IN ({idList}) GROUP BY CategoryId";
-
-        var results = await _dbContext.Database
-            .SqlQueryRaw<CategoryIdCount>(sql)
+        var results = await _dbContext.ProductCategories
+            .AsNoTracking()
+            .Where(pc => categoryIds.Contains(pc.CategoryId))
+            .GroupBy(pc => pc.CategoryId)
+            .Select(g => new { CategoryId = g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken);
 
         return results.ToDictionary(r => r.CategoryId, r => r.Count);
@@ -300,16 +300,8 @@ public class AdminCategoryService : IAdminCategoryService
 
     private async Task<int> CountProductLinksForCategoryAsync(Guid categoryId, CancellationToken cancellationToken)
     {
-        var sql = $"SELECT COUNT(*) FROM ProductCategories WHERE CategoryId = '{categoryId}'";
-        var result = await _dbContext.Database
-            .SqlQueryRaw<int>(sql)
-            .ToListAsync(cancellationToken);
-        return result.FirstOrDefault();
-    }
-
-    private class CategoryIdCount
-    {
-        public Guid CategoryId { get; set; }
-        public int Count { get; set; }
+        return await _dbContext.ProductCategories
+            .AsNoTracking()
+            .CountAsync(pc => pc.CategoryId == categoryId, cancellationToken);
     }
 }

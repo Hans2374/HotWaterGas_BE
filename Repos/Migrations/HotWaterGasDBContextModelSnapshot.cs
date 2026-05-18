@@ -34,7 +34,7 @@ namespace Repos.Migrations
 
                     b.HasIndex(new[] { "CategoryId" }, "IX_ProductCategories_CategoryId");
 
-                    b.ToTable("ProductCategories");
+                    b.ToTable("ProductCategories", (string)null);
                 });
 
             modelBuilder.Entity("ProductTags", b =>
@@ -49,7 +49,7 @@ namespace Repos.Migrations
 
                     b.HasIndex(new[] { "TagId" }, "IX_ProductTags_TagId");
 
-                    b.ToTable("ProductTags");
+                    b.ToTable("ProductTags", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.CartItems", b =>
@@ -73,7 +73,7 @@ namespace Repos.Migrations
 
                     b.HasIndex(new[] { "ProductId" }, "IX_CartItems_ProductId");
 
-                    b.ToTable("CartItems");
+                    b.ToTable("CartItems", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Carts", b =>
@@ -98,7 +98,7 @@ namespace Repos.Migrations
                         .IsUnique()
                         .HasFilter("\"IsCheckedOut\" = false");
 
-                    b.ToTable("Carts");
+                    b.ToTable("Carts", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Categories", b =>
@@ -132,7 +132,7 @@ namespace Repos.Migrations
                     b.HasIndex(new[] { "Slug" }, "IX_Categories_Slug")
                         .IsUnique();
 
-                    b.ToTable("Categories");
+                    b.ToTable("Categories", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Discounts", b =>
@@ -151,7 +151,7 @@ namespace Repos.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Discounts");
+                    b.ToTable("Discounts", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.EmailVerifications", b =>
@@ -186,7 +186,7 @@ namespace Repos.Migrations
                     b.HasIndex(new[] { "UserId" }, "IX_EmailVerifications_UserId")
                         .IsUnique();
 
-                    b.ToTable("EmailVerifications");
+                    b.ToTable("EmailVerifications", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.OrderItems", b =>
@@ -218,7 +218,7 @@ namespace Repos.Migrations
 
                     b.HasIndex(new[] { "ProductId" }, "IX_OrderItems_ProductId");
 
-                    b.ToTable("OrderItems");
+                    b.ToTable("OrderItems", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Orders", b =>
@@ -268,7 +268,7 @@ namespace Repos.Migrations
 
                     b.HasIndex(new[] { "UserId" }, "IX_Orders_UserId");
 
-                    b.ToTable("Orders");
+                    b.ToTable("Orders", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.PasswordResets", b =>
@@ -319,7 +319,7 @@ namespace Repos.Migrations
 
                     b.HasIndex(new[] { "UserId" }, "IX_PasswordResets_UserId");
 
-                    b.ToTable("PasswordResets");
+                    b.ToTable("PasswordResets", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.PaymentTransactions", b =>
@@ -369,7 +369,7 @@ namespace Repos.Migrations
                     b.HasIndex(new[] { "OrderId" }, "IX_PaymentTransactions_OrderId")
                         .IsUnique();
 
-                    b.ToTable("PaymentTransactions");
+                    b.ToTable("PaymentTransactions", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.ProductImages", b =>
@@ -394,7 +394,7 @@ namespace Repos.Migrations
 
                     b.HasIndex(new[] { "ProductId" }, "IX_ProductImages_ProductId");
 
-                    b.ToTable("ProductImages");
+                    b.ToTable("ProductImages", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.ProductMetadatas", b =>
@@ -419,7 +419,7 @@ namespace Repos.Migrations
 
                     b.HasKey("ProductId");
 
-                    b.ToTable("ProductMetadatas");
+                    b.ToTable("ProductMetadatas", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.ProductSystemRequirements", b =>
@@ -491,7 +491,7 @@ namespace Repos.Migrations
                     b.HasIndex(new[] { "ProductId" }, "IX_ProductSystemRequirements_ProductId")
                         .IsUnique();
 
-                    b.ToTable("ProductSystemRequirements");
+                    b.ToTable("ProductSystemRequirements", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Products", b =>
@@ -548,7 +548,7 @@ namespace Repos.Migrations
                     b.HasIndex(new[] { "Slug" }, "IX_Products_Slug")
                         .IsUnique();
 
-                    b.ToTable("Products");
+                    b.ToTable("Products", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.RefreshTokens", b =>
@@ -615,7 +615,7 @@ namespace Repos.Migrations
                     b.HasIndex("UserId")
                         .HasDatabaseName("IX_RefreshTokens_UserId");
 
-                    b.ToTable("RefreshTokens");
+                    b.ToTable("RefreshTokens", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Reviews", b =>
@@ -654,7 +654,7 @@ namespace Repos.Migrations
                     b.HasIndex(new[] { "UserId", "ProductId" }, "IX_Reviews_UserId_ProductId")
                         .IsUnique();
 
-                    b.ToTable("Reviews");
+                    b.ToTable("Reviews", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Roles", b =>
@@ -668,7 +668,7 @@ namespace Repos.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Roles");
+                    b.ToTable("Roles", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.SteamKeys", b =>
@@ -709,7 +709,7 @@ namespace Repos.Migrations
 
                     b.HasIndex(new[] { "ProductId", "Status" }, "IX_SteamKeys_ProductId_Status");
 
-                    b.ToTable("SteamKeys");
+                    b.ToTable("SteamKeys", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Tags", b =>
@@ -748,7 +748,7 @@ namespace Repos.Migrations
                     b.HasIndex(new[] { "Slug" }, "IX_Tags_Slug")
                         .IsUnique();
 
-                    b.ToTable("Tags");
+                    b.ToTable("Tags", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Users", b =>
@@ -785,7 +785,7 @@ namespace Repos.Migrations
 
                     b.HasIndex(new[] { "RoleId" }, "IX_Users_RoleId");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.WishlistItems", b =>
@@ -809,7 +809,7 @@ namespace Repos.Migrations
                     b.HasIndex(new[] { "WishlistId", "ProductId" }, "IX_WishlistItems_WishlistId_ProductId")
                         .IsUnique();
 
-                    b.ToTable("WishlistItems");
+                    b.ToTable("WishlistItems", (string)null);
                 });
 
             modelBuilder.Entity("Repos.Models.Wishlists", b =>
@@ -825,7 +825,7 @@ namespace Repos.Migrations
                     b.HasIndex(new[] { "UserId" }, "IX_Wishlists_UserId")
                         .IsUnique();
 
-                    b.ToTable("Wishlists");
+                    b.ToTable("Wishlists", (string)null);
                 });
 
             modelBuilder.Entity("ProductCategories", b =>
