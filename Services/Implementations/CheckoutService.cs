@@ -16,17 +16,20 @@ public class CheckoutService : ICheckoutService
     private readonly HotWaterGasDBContext _dbContext;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IConfiguration _configuration;
+    private readonly IEmailService _emailService;
     private readonly ILogger<CheckoutService>? _logger;
 
     public CheckoutService(
         HotWaterGasDBContext dbContext,
         IHttpContextAccessor httpContextAccessor,
         IConfiguration configuration,
+        IEmailService emailService,
         ILogger<CheckoutService>? logger = null)
     {
         _dbContext = dbContext;
         _httpContextAccessor = httpContextAccessor;
         _configuration = configuration;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -461,8 +464,13 @@ public class CheckoutService : ICheckoutService
         }
 
         var trackedOrder = await _dbContext.Orders
+            .Include(o => o.User)
             .Include(o => o.OrderItems)
+                .ThenInclude(oi => oi.Product)
+                    .ThenInclude(p => p!.ProductImages)
             .Include(o => o.SteamKeys)
+                .ThenInclude(sk => sk.Product)
+                    .ThenInclude(p => p!.ProductImages)
             .FirstOrDefaultAsync(o => o.Id == trackedPt.OrderId, cancellationToken);
 
         if (trackedOrder == null)
@@ -634,6 +642,19 @@ public class CheckoutService : ICheckoutService
                 "[CheckoutService.PaymentReturn] PAID save complete. OrderId={OrderId}, Order.Status={OrderStatus}, PaymentTx.Status={TxStatus}, CartItemsRemoved={CartItemsRemoved}",
                 trackedOrder.Id, trackedOrder.Status, trackedPt.Status, cartItemsRemovedCount);
 
+            // ── EMAIL FULFILLMENT ────────────────────────────────────────────────
+            // Idempotency: skip if email was already sent successfully.
+            if (!trackedOrder.FulfillmentEmailSentAt.HasValue)
+            {
+                await SendFulfillmentEmailAsync(trackedOrder, trackedPt.ProviderOrderCode, cancellationToken);
+            }
+            else
+            {
+                _logger?.LogInformation(
+                    "[CheckoutService.PaymentReturn] Fulfillment email already sent for OrderId={OrderId}, skipping",
+                    trackedOrder.Id);
+            }
+
             return new PaymentReturnResponse
             {
                 Success = true,
@@ -800,6 +821,119 @@ public class CheckoutService : ICheckoutService
                 "[CheckoutService.StockSync] ProductId={ProductId} OldStock={OldStock} NewStock={NewStock}",
                 productId, product.Stock, availableCount);
             product.Stock = availableCount;
+        }
+    }
+
+    private async Task SendFulfillmentEmailAsync(
+        Orders order,
+        string orderCode,
+        CancellationToken cancellationToken)
+    {
+        _logger?.LogInformation(
+            "[CheckoutService.SendFulfillmentEmail] Starting. OrderId={OrderId}, UserId={UserId}",
+            order.Id, order.UserId);
+
+        var toEmail = order.User?.Email;
+        var toName = order.User?.DisplayName ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(toEmail))
+        {
+            _logger?.LogWarning(
+                "[CheckoutService.SendFulfillmentEmail] No email address found for UserId={UserId}. Skipping email.",
+                order.UserId);
+            return;
+        }
+
+        // Group Steam keys by product so each product row shows its keys.
+        var steamKeysByProduct = order.SteamKeys
+            .Where(sk => sk.Product != null && !string.IsNullOrWhiteSpace(sk.KeyValue))
+            .GroupBy(sk => sk.ProductId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToList()
+            );
+
+        // Group product images by product — pick primary image first, then lowest DisplayOrder.
+        // EF Core does NOT guarantee collection ordering, so we must explicitly order here.
+        // DistinctBy alone is non-deterministic: it drops duplicates without specifying which survives.
+        var imagesByProduct = order.SteamKeys
+            .Where(sk => sk.Product?.ProductImages != null)
+            .SelectMany(sk => sk.Product!.ProductImages
+                .Select(img => new { img.ProductId, img.IsPrimary, img.DisplayOrder, img.ImageUrl }))
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .OrderByDescending(x => x.IsPrimary)
+                    .ThenBy(x => x.DisplayOrder)
+                    .First()
+                    .ImageUrl
+            );
+
+        var items = order.OrderItems.Select(oi =>
+        {
+            steamKeysByProduct.TryGetValue(oi.ProductId, out var keysForProduct);
+            imagesByProduct.TryGetValue(oi.ProductId, out var imageUrl);
+
+            _logger?.LogInformation(
+                "[FulfillmentEmail] Product={ProductName} ProductId={ProductId} "
+                + "SelectedImage={ImageUrl} HasImage={HasImage}",
+                oi.Product?.Name ?? "Unknown Product",
+                oi.ProductId,
+                imageUrl ?? "(none)",
+                imageUrl != null);
+
+            return new FulfillmentOrderItem
+            {
+                ProductId = oi.ProductId,
+                ProductName = oi.Product?.Name ?? "Unknown Product",
+                ProductImageUrl = imageUrl,
+                Quantity = oi.Quantity,
+                UnitPrice = oi.UnitPrice,
+                LineTotal = oi.LineTotal,
+                SteamKeys = keysForProduct?
+                    .Select(sk => sk.KeyValue)
+                    .Where(k => !string.IsNullOrWhiteSpace(k))
+                    .ToList() ?? new List<string>()
+            };
+        }).ToList();
+
+        var request = new FulfillmentEmailRequest
+        {
+            ToEmail = toEmail,
+            ToName = toName,
+            OrderCode = orderCode,
+            OrderDate = order.CreatedAt,
+            Subtotal = order.Subtotal,
+            DiscountAmount = order.DiscountAmount,
+            FinalTotal = order.FinalTotal,
+            PaymentStatus = "PAID",
+            Items = items
+        };
+
+        try
+        {
+            await _emailService.SendFulfillmentEmailAsync(request, cancellationToken);
+
+            // Record success.
+            order.FulfillmentEmailSentAt = DateTime.UtcNow;
+            order.FulfillmentLastError = string.Empty;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger?.LogInformation(
+                "[CheckoutService.SendFulfillmentEmail] Email sent successfully. OrderId={OrderId}, To={Email}",
+                order.Id, toEmail);
+        }
+        catch (Exception ex)
+        {
+            // Log failure but do NOT rollback fulfillment. Keys are sold, order is paid.
+            order.FulfillmentLastError = ex.Message;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger?.LogError(
+                ex,
+                "[CheckoutService.SendFulfillmentEmail] Email sending failed. OrderId={OrderId}, To={Email}, Error={Error}",
+                order.Id, toEmail, ex.Message);
         }
     }
 
