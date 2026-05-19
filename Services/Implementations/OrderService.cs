@@ -35,6 +35,7 @@ public class OrderService : IOrderService
                 OrderId = o.Id,
                 OrderNumber = GenerateOrderNumber(o.CreatedAt, o.Id),
                 CreatedAt = o.CreatedAt,
+                Status = o.Status,
                 StatusLabel = GetStatusLabel(o.Status),
                 Total = o.FinalTotal,
                 ItemCount = o.OrderItems.Sum(oi => oi.Quantity)
@@ -99,6 +100,7 @@ public class OrderService : IOrderService
             OrderId = order.Id,
             OrderNumber = GenerateOrderNumber(order.CreatedAt, order.Id),
             CreatedAt = order.CreatedAt,
+            Status = order.Status,
             StatusLabel = GetStatusLabel(order.Status),
             Subtotal = order.Subtotal,
             DiscountAmount = order.DiscountAmount,

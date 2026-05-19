@@ -88,6 +88,7 @@ public class MyOrderListItemResponse
     public Guid OrderId { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
+    public int Status { get; set; }
     public string StatusLabel { get; set; } = string.Empty;
     public decimal Total { get; set; }
     public int ItemCount { get; set; }
@@ -98,6 +99,7 @@ public class MyOrderDetailResponse
     public Guid OrderId { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
+    public int Status { get; set; }
     public string StatusLabel { get; set; } = string.Empty;
     public decimal Subtotal { get; set; }
     public decimal DiscountAmount { get; set; }

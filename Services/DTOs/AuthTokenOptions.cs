@@ -64,5 +64,5 @@ public class JwtTokenOptions
     public string Key { get; set; } = string.Empty;
     public string Issuer { get; set; } = "HotWaterGas";
     public string Audience { get; set; } = "HotWaterGasClient";
-    public int AccessTokenExpiryMinutes { get; set; } = 15;
+    public int AccessTokenExpiryMinutes { get; set; } = 60;
 }
