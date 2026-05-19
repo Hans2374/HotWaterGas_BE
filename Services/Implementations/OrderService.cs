@@ -59,6 +59,7 @@ public class OrderService : IOrderService
                     .ThenInclude(p => p!.ProductImages)
             .Include(o => o.SteamKeys)
                 .ThenInclude(sk => sk.Product)
+            .Include(o => o.PaymentTransactions)
             .FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == userId, cancellationToken);
 
         if (order is null)
@@ -102,7 +103,9 @@ public class OrderService : IOrderService
             Subtotal = order.Subtotal,
             DiscountAmount = order.DiscountAmount,
             FinalTotal = order.FinalTotal,
-            PaymentMethodLabel = "Stripe",
+            PaymentMethodLabel = order.PaymentTransactions != null
+                ? GetPaymentMethodLabel(order.PaymentTransactions.Provider)
+                : "Thanh toán QR",
             Items = items,
             Licenses = licenses
         };
@@ -118,11 +121,20 @@ public class OrderService : IOrderService
     {
         return status switch
         {
-            0 => "Cancelled",
-            1 => "Failed",
-            2 => "Pending",
-            4 => "Completed",
-            _ => "Unknown"
+            0 => "Đã hủy",
+            1 => "Thất bại",
+            2 => "Đang chờ",
+            4 => "Hoàn tất",
+            _ => "Không xác định"
+        };
+    }
+
+    private static string GetPaymentMethodLabel(int provider)
+    {
+        return provider switch
+        {
+            1 => "Thanh toán QR",
+            _ => "Không xác định"
         };
     }
 
