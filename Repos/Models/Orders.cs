@@ -11,6 +11,8 @@ public partial class Orders
 
     public Guid UserId { get; set; }
 
+    public Guid? CartId { get; set; }
+
     public decimal Subtotal { get; set; }
 
     public int Status { get; set; }

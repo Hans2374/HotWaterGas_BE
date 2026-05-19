@@ -359,6 +359,7 @@ public class CheckoutService : ICheckoutService
         {
             Id = orderId,
             UserId = userId,
+            CartId = cartItems.Count > 0 && cartItems[0].Cart != null ? cartItems[0].Cart.Id : null,
             Subtotal = subtotal,
             Status = 2,
             CreatedAt = DateTime.UtcNow,
@@ -656,14 +657,46 @@ public class CheckoutService : ICheckoutService
             // Reset IsCheckedOut so the user's cart becomes visible again after cancellation.
             // The cart was marked IsCheckedOut=true during CreatePaymentAsync to prevent reuse.
             // On cancel, the order is dead — the user needs to see their cart again.
-            var trackedCart = await _dbContext.Carts
-                .FirstOrDefaultAsync(c => c.UserId == trackedOrder.UserId && c.IsCheckedOut, cancellationToken);
-            if (trackedCart != null)
+            //
+            // FIX: Use trackedOrder.CartId to identify the exact cart that was checked out,
+            // instead of querying by UserId+IsCheckedOut. This avoids the conflict with the
+            // unique filtered index (UserId WHERE IsCheckedOut=false) that only allows one
+            // unchecked-out cart per user. A second unchecked-out cart cannot exist for the
+            // same user due to this index, so querying by UserId alone finds nothing
+            // when IsCheckedOut=true, and even if a new cart was created, it would have a
+            // DIFFERENT CartId than the one on this order.
+            if (trackedOrder.CartId.HasValue)
             {
-                _logger?.LogInformation(
-                    "[CheckoutService.PaymentReturn] Resetting IsCheckedOut=false on cart. CartId={CartId}",
-                    trackedCart.Id);
-                trackedCart.IsCheckedOut = false;
+                var trackedCart = await _dbContext.Carts
+                    .FirstOrDefaultAsync(c => c.Id == trackedOrder.CartId.Value, cancellationToken);
+                if (trackedCart != null)
+                {
+                    _logger?.LogInformation(
+                        "[CheckoutService.PaymentReturn] Resetting IsCheckedOut=false on cart. CartId={CartId}",
+                        trackedCart.Id);
+                    trackedCart.IsCheckedOut = false;
+                }
+                else
+                {
+                    _logger?.LogWarning(
+                        "[CheckoutService.PaymentReturn] Cart not found for CartId={CartId}. OrderId={OrderId}",
+                        trackedOrder.CartId, trackedOrder.Id);
+                }
+            }
+            else
+            {
+                _logger?.LogWarning(
+                    "[CheckoutService.PaymentReturn] Order has no CartId. OrderId={OrderId}. Attempting fallback by UserId.",
+                    trackedOrder.Id);
+                var fallbackCart = await _dbContext.Carts
+                    .FirstOrDefaultAsync(c => c.UserId == trackedOrder.UserId && c.IsCheckedOut, cancellationToken);
+                if (fallbackCart != null)
+                {
+                    _logger?.LogInformation(
+                        "[CheckoutService.PaymentReturn] Fallback reset IsCheckedOut=false on cart. CartId={CartId}",
+                        fallbackCart.Id);
+                    fallbackCart.IsCheckedOut = false;
+                }
             }
 
             // NOTE: Products.Stock was never decremented during payment creation,
@@ -695,14 +728,39 @@ public class CheckoutService : ICheckoutService
         trackedPt.UpdatedAt = DateTime.UtcNow;
 
         // Reset IsCheckedOut so the user's cart becomes visible again after payment failure.
-        var failedCart = await _dbContext.Carts
-            .FirstOrDefaultAsync(c => c.UserId == trackedOrder.UserId && c.IsCheckedOut, cancellationToken);
-        if (failedCart != null)
+        // Use trackedOrder.CartId to identify the exact cart (same logic as CANCELLED branch).
+        if (trackedOrder.CartId.HasValue)
         {
-            _logger?.LogInformation(
-                "[CheckoutService.PaymentReturn] Resetting IsCheckedOut=false on failed payment cart. CartId={CartId}",
-                failedCart.Id);
-            failedCart.IsCheckedOut = false;
+            var failedCart = await _dbContext.Carts
+                .FirstOrDefaultAsync(c => c.Id == trackedOrder.CartId.Value, cancellationToken);
+            if (failedCart != null)
+            {
+                _logger?.LogInformation(
+                    "[CheckoutService.PaymentReturn] Resetting IsCheckedOut=false on failed payment cart. CartId={CartId}",
+                    failedCart.Id);
+                failedCart.IsCheckedOut = false;
+            }
+            else
+            {
+                _logger?.LogWarning(
+                    "[CheckoutService.PaymentReturn] Cart not found for CartId={CartId}. OrderId={OrderId}",
+                    trackedOrder.CartId, trackedOrder.Id);
+            }
+        }
+        else
+        {
+            _logger?.LogWarning(
+                "[CheckoutService.PaymentReturn] Order has no CartId on failure. OrderId={OrderId}. Attempting fallback.",
+                trackedOrder.Id);
+            var fallbackFailedCart = await _dbContext.Carts
+                .FirstOrDefaultAsync(c => c.UserId == trackedOrder.UserId && c.IsCheckedOut, cancellationToken);
+            if (fallbackFailedCart != null)
+            {
+                _logger?.LogInformation(
+                    "[CheckoutService.PaymentReturn] Fallback reset IsCheckedOut=false on failed cart. CartId={CartId}",
+                    fallbackFailedCart.Id);
+                fallbackFailedCart.IsCheckedOut = false;
+            }
         }
 
         // NOTE: Products.Stock was never decremented during payment creation,
