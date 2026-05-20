@@ -113,6 +113,92 @@ public class OrderService : IOrderService
         };
     }
 
+    public async Task<AdminOrderDetailResponse?> GetAdminOrderDetailAsync(Guid orderId, CancellationToken cancellationToken = default)
+    {
+        var order = await _dbContext.Orders
+            .AsNoTracking()
+            .Include(o => o.User)
+            .Include(o => o.PaymentTransactions)
+            .Include(o => o.OrderItems)
+                .ThenInclude(oi => oi.Product)
+                    .ThenInclude(p => p!.ProductImages)
+            .Include(o => o.SteamKeys)
+                .ThenInclude(sk => sk.Product)
+            .FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
+
+        if (order is null)
+        {
+            return null;
+        }
+
+        var items = order.OrderItems
+            .Where(oi => oi.Product != null)
+            .Select(oi => new AdminOrderItemResponse
+            {
+                ProductId = oi.ProductId,
+                ProductName = oi.Product!.Name,
+                ProductSlug = oi.Product.Slug,
+                ProductImageUrl = oi.Product.ProductImages
+                    .OrderBy(i => i.IsPrimary ? 0 : 1)
+                    .ThenBy(i => i.DisplayOrder)
+                    .Select(i => i.ImageUrl)
+                    .FirstOrDefault() ?? string.Empty,
+                Quantity = oi.Quantity,
+                UnitPrice = oi.UnitPrice,
+                LineTotal = oi.LineTotal
+            })
+            .ToList();
+
+        var licenses = order.SteamKeys
+            .Where(sk => sk.Product != null)
+            .Select(sk => new AdminOrderLicenseResponse
+            {
+                SteamKeyId = sk.Id,
+                ProductName = sk.Product!.Name,
+                KeyValue = sk.KeyValue,
+                UsedAt = sk.UsedAt
+            })
+            .ToList();
+
+        var paymentStatusLabel = order.PaymentTransactions != null
+            ? MapPaymentStatusToLabel(order.PaymentTransactions.Status)
+            : "No payment record";
+
+        return new AdminOrderDetailResponse
+        {
+            OrderId = order.Id,
+            OrderNumber = GenerateOrderNumber(order.CreatedAt, order.Id),
+            CreatedAt = order.CreatedAt,
+            FulfilledAt = order.FulfilledAt,
+            Status = order.Status,
+            StatusLabel = GetStatusLabel(order.Status),
+            PaymentStatus = paymentStatusLabel,
+            Subtotal = order.Subtotal,
+            DiscountAmount = order.DiscountAmount,
+            FinalTotal = order.FinalTotal,
+            PaymentMethodLabel = order.PaymentTransactions != null
+                ? GetPaymentMethodLabel(order.PaymentTransactions.Provider)
+                : "Không xác định",
+            Customer = new AdminOrderCustomerInfo
+            {
+                UserId = order.UserId,
+                DisplayName = order.User?.DisplayName ?? string.Empty,
+                Email = order.User?.Email ?? string.Empty
+            },
+            Items = items,
+            Licenses = licenses
+        };
+    }
+
+    private static string MapPaymentStatusToLabel(int status) => status switch
+    {
+        1 => "Pending",
+        2 => "Paid",
+        3 => "Cancelled",
+        0 => "Failed",
+        _ => "Unknown"
+    };
+
     private static string GenerateOrderNumber(DateTime createdAt, Guid orderId)
     {
         var shortId = orderId.ToString("N").Substring(0, 8).ToUpperInvariant();

@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IAdminTagService, AdminTagService>();
         services.AddScoped<IAdminRoleService, AdminRoleService>();
         services.AddScoped<IAdminDiscountService, AdminDiscountService>();
+        services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         services.AddScoped<ICheckoutService, CheckoutService>();
         services.AddScoped<ISteamKeyService, SteamKeyService>();
         services.AddScoped<IImageUploadService, CloudinaryImageUploadService>();

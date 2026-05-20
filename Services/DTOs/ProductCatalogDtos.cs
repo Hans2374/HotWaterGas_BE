@@ -85,6 +85,7 @@ public class ProductDetailResponse
     public decimal Rating { get; set; }
     public int SoldCount { get; set; }
     public bool HasStock { get; set; }
+    public int Stock { get; set; }
     public ProductPriceResponse Price { get; set; } = new();
     public List<ProductImageResponse> Images { get; set; } = new();
     public List<ProductLookupResponse> Categories { get; set; } = new();

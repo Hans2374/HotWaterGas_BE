@@ -301,3 +301,49 @@ public class PaymentReturnResponse
     public string OrderCode { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
 }
+
+// ── Admin Order Detail ─────────────────────────────────────────────────────────
+
+public class AdminOrderDetailResponse
+{
+    public Guid OrderId { get; set; }
+    public string OrderNumber { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public DateTime? FulfilledAt { get; set; }
+    public int Status { get; set; }
+    public string StatusLabel { get; set; } = string.Empty;
+    public string PaymentStatus { get; set; } = string.Empty;
+    public decimal Subtotal { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public decimal FinalTotal { get; set; }
+    public string PaymentMethodLabel { get; set; } = string.Empty;
+    public AdminOrderCustomerInfo Customer { get; set; } = new();
+    public List<AdminOrderItemResponse> Items { get; set; } = new();
+    public List<AdminOrderLicenseResponse> Licenses { get; set; } = new();
+}
+
+public class AdminOrderCustomerInfo
+{
+    public Guid UserId { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+}
+
+public class AdminOrderItemResponse
+{
+    public Guid ProductId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public string ProductSlug { get; set; } = string.Empty;
+    public string ProductImageUrl { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal LineTotal { get; set; }
+}
+
+public class AdminOrderLicenseResponse
+{
+    public Guid SteamKeyId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public string KeyValue { get; set; } = string.Empty;
+    public DateTime? UsedAt { get; set; }
+}

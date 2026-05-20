@@ -167,6 +167,7 @@ public class ProductCatalogService : IProductCatalogService
             Rating = product.Reviews.Count == 0 ? 0 : decimal.Round((decimal)product.Reviews.Average(r => r.Rating), 1),
             SoldCount = product.OrderItems.Sum(oi => oi.Quantity),
             HasStock = computedStock > 0,
+            Stock = computedStock,
             Price = new ProductPriceResponse
             {
                 BasePrice = basePrice,

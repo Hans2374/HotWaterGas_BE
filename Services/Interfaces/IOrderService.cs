@@ -6,4 +6,5 @@ public interface IOrderService
 {
     Task<List<MyOrderListItemResponse>> GetMyOrdersAsync(CancellationToken cancellationToken = default);
     Task<MyOrderDetailResponse?> GetMyOrderDetailAsync(Guid orderId, CancellationToken cancellationToken = default);
+    Task<AdminOrderDetailResponse?> GetAdminOrderDetailAsync(Guid orderId, CancellationToken cancellationToken = default);
 }
