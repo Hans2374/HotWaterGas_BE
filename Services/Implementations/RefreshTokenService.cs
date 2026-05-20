@@ -206,11 +206,22 @@ public class RefreshTokenService : IRefreshTokenService
             _ => true
         };
 
+        var sameSite = _authOptions.GetSameSiteMode();
+
+        // SameSite=None requires Secure=true per the SameSite spec.
+        // Browsers (Chrome 114+) silently drop SameSite=None; Secure=false cookies.
+        // Fall back to Lax on non-HTTPS origins so the cookie is stored and sent
+        // on same-origin requests during local development.
+        if (sameSite == SameSiteMode.None && !isSecure)
+        {
+            sameSite = SameSiteMode.Lax;
+        }
+
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
             Secure = isSecure,
-            SameSite = _authOptions.GetSameSiteMode(),
+            SameSite = sameSite,
             Expires = expiresAtUtc,
             Path = "/",
             IsEssential = true
@@ -230,11 +241,18 @@ public class RefreshTokenService : IRefreshTokenService
             _ => true
         };
 
+        var sameSite = _authOptions.GetSameSiteMode();
+
+        if (sameSite == SameSiteMode.None && !isSecure)
+        {
+            sameSite = SameSiteMode.Lax;
+        }
+
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
             Secure = isSecure,
-            SameSite = _authOptions.GetSameSiteMode(),
+            SameSite = sameSite,
             Expires = DateTime.UtcNow.AddDays(-1),
             Path = "/",
             IsEssential = true
