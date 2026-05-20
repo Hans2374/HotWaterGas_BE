@@ -107,6 +107,7 @@ public partial class HotWaterGasDBContext : DbContext
             entity.Property(e => e.Slug).IsRequired();
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(e => e.ImageUrl).HasMaxLength(500);
         });
 
         modelBuilder.Entity<Discounts>(entity =>

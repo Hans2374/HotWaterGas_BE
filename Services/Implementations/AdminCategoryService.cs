@@ -55,6 +55,7 @@ public class AdminCategoryService : IAdminCategoryService
             Id = c.Id,
             Name = c.Name,
             Slug = c.Slug,
+            ImageUrl = c.ImageUrl,
             IsActive = c.IsActive,
             AttachedProductsCount = productCountDict.TryGetValue(c.Id, out var count) ? count : 0,
             CreatedAt = c.CreatedAt,
@@ -102,6 +103,7 @@ public class AdminCategoryService : IAdminCategoryService
             Id = category.Id,
             Name = category.Name,
             Slug = category.Slug,
+            ImageUrl = category.ImageUrl,
             IsActive = category.IsActive,
             AttachedProductsCount = productCount,
             CreatedAt = category.CreatedAt,
@@ -151,7 +153,8 @@ public class AdminCategoryService : IAdminCategoryService
             Id = Guid.NewGuid(),
             Name = name,
             Slug = slug,
-            IsActive = request.IsActive
+            IsActive = request.IsActive,
+            ImageUrl = request.ImageUrl
         };
 
         _dbContext.Categories.Add(category);
@@ -166,6 +169,7 @@ public class AdminCategoryService : IAdminCategoryService
             Id = category.Id,
             Name = category.Name,
             Slug = category.Slug,
+            ImageUrl = category.ImageUrl,
             IsActive = category.IsActive,
             AttachedProductsCount = 0,
             CreatedAt = category.CreatedAt,
@@ -227,6 +231,7 @@ public class AdminCategoryService : IAdminCategoryService
         category.Name = name;
         category.Slug = slug;
         category.IsActive = request.IsActive;
+        category.ImageUrl = request.ImageUrl;
         category.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -242,6 +247,7 @@ public class AdminCategoryService : IAdminCategoryService
             Id = category.Id,
             Name = category.Name,
             Slug = category.Slug,
+            ImageUrl = category.ImageUrl,
             IsActive = category.IsActive,
             AttachedProductsCount = productCount,
             CreatedAt = category.CreatedAt,

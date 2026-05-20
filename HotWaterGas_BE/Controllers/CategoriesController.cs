@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Services.DTOs;
 using Services.Interfaces;
 
 namespace HotWaterGas_BE.Controllers;
@@ -18,6 +19,13 @@ public class CategoriesController : ControllerBase
     public async Task<IActionResult> GetCategories(CancellationToken cancellationToken)
     {
         var categories = await _productCatalogService.GetCategoriesAsync(cancellationToken);
+        return Ok(categories);
+    }
+
+    [HttpGet("homepage")]
+    public async Task<IActionResult> GetHomepageCategories(CancellationToken cancellationToken)
+    {
+        var categories = await _productCatalogService.GetHomepageCategoriesAsync(cancellationToken);
         return Ok(categories);
     }
 }

@@ -18,5 +18,7 @@ public partial class Categories
 
     public DateTime UpdatedAt { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     public virtual ICollection<Products> Product { get; set; } = new List<Products>();
 }

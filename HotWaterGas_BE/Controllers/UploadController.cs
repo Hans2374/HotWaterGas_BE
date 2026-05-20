@@ -95,4 +95,43 @@ public class UploadController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An unexpected error occurred." });
         }
     }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost("categories")]
+    public async Task<IActionResult> UploadCategoryImage(
+        [FromForm] FileUploadRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.File == null || request.File.Length == 0)
+        {
+            _logger.LogWarning("[Upload.Category] No file provided");
+            return BadRequest(new { message = "No file provided." });
+        }
+
+        try
+        {
+            var result = await _imageUploadService.UploadImageAsync(request.File, cancellationToken);
+
+            _logger.LogInformation(
+                "[Upload.Category] Success: {PublicId} -> {Url}",
+                result.PublicId, result.Url);
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning("[Upload.Category] Validation error: {Message}", ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogError("[Upload.Category] Upload failed: {Message}", ex.Message);
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = "Image upload failed. Please try again." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("[Upload.Category] Unexpected error: {Message}", ex.Message);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An unexpected error occurred." });
+        }
+    }
 }

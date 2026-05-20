@@ -9,4 +9,5 @@ public interface IProductCatalogService
     Task<List<ProductCatalogItemResponse>> GetRecommendationsAsync(Guid productId, int limit, CancellationToken cancellationToken = default);
     Task<List<ProductLookupResponse>> GetCategoriesAsync(CancellationToken cancellationToken = default);
     Task<List<ProductLookupResponse>> GetTagsAsync(CancellationToken cancellationToken = default);
+    Task<List<CategoryHomepageResponse>> GetHomepageCategoriesAsync(CancellationToken cancellationToken = default);
 }

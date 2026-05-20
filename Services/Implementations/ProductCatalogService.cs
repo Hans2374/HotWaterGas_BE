@@ -34,10 +34,11 @@ public class ProductCatalogService : IProductCatalogService
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var search = query.Search.Trim();
+            var searchPattern = $"%{search}%";
             productsQuery = productsQuery.Where(p =>
-                p.Name.Contains(search) ||
-                p.Description.Contains(search) ||
-                p.ShortDescription.Contains(search));
+                EF.Functions.ILike(p.Name, searchPattern) ||
+                EF.Functions.ILike(p.Description, searchPattern) ||
+                EF.Functions.ILike(p.ShortDescription, searchPattern));
         }
 
         if (query.TagIds.Count > 0)
@@ -304,7 +305,8 @@ public class ProductCatalogService : IProductCatalogService
             {
                 Id = c.Id,
                 Name = c.Name,
-                Slug = c.Slug
+                Slug = c.Slug,
+                ImageUrl = c.ImageUrl
             })
             .ToListAsync(cancellationToken);
     }
@@ -320,6 +322,23 @@ public class ProductCatalogService : IProductCatalogService
                 Id = t.Id,
                 Name = t.Name,
                 Slug = t.Slug
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<CategoryHomepageResponse>> GetHomepageCategoriesAsync(CancellationToken cancellationToken = default)
+    {
+        return _dbContext.Categories
+            .AsNoTracking()
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Name)
+            .Take(10)
+            .Select(c => new CategoryHomepageResponse
+            {
+                Id = c.Id,
+                Name = c.Name,
+                Slug = c.Slug,
+                ImageUrl = c.ImageUrl
             })
             .ToListAsync(cancellationToken);
     }
