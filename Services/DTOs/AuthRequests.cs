@@ -77,3 +77,25 @@ public class ForgotPasswordResetRequest
     [MinLength(8)]
     public string NewPassword { get; set; } = string.Empty;
 }
+
+public class UpdateProfileRequest
+{
+    [Required]
+    [MinLength(2, ErrorMessage = "Tên hiển thị phải có ít nhất 2 ký tự.")]
+    [MaxLength(100, ErrorMessage = "Tên hiển thị không được vượt quá 100 ký tự.")]
+    public string DisplayName { get; set; } = string.Empty;
+}
+
+public class ChangePasswordRequest
+{
+    [Required(ErrorMessage = "Mật khẩu hiện tại là bắt buộc.")]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Mật khẩu mới là bắt buộc.")]
+    [MinLength(8, ErrorMessage = "Mật khẩu mới phải có ít nhất 8 ký tự.")]
+    public string NewPassword { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Xác nhận mật khẩu mới là bắt buộc.")]
+    public string ConfirmPassword { get; set; } = string.Empty;
+}
+

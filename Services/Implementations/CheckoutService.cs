@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -7,6 +6,7 @@ using PayOS.Models;
 using PayOS.Models.V2.PaymentRequests;
 using Repos.Models;
 using Services.DTOs;
+using Services.Implementations;
 using Services.Interfaces;
 
 namespace Services.Implementations;
@@ -14,34 +14,36 @@ namespace Services.Implementations;
 public class CheckoutService : ICheckoutService
 {
     private readonly HotWaterGasDBContext _dbContext;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ICurrentUserService _currentUserService;
     private readonly IConfiguration _configuration;
     private readonly IEmailService _emailService;
     private readonly ILogger<CheckoutService>? _logger;
 
     public CheckoutService(
         HotWaterGasDBContext dbContext,
-        IHttpContextAccessor httpContextAccessor,
+        ICurrentUserService currentUserService,
         IConfiguration configuration,
         IEmailService emailService,
         ILogger<CheckoutService>? logger = null)
     {
         _dbContext = dbContext;
-        _httpContextAccessor = httpContextAccessor;
+        _currentUserService = currentUserService;
         _configuration = configuration;
         _emailService = emailService;
         _logger = logger;
+    }
+
+    private Guid RequireUserId()
+    {
+        return _currentUserService.UserId
+            ?? throw new ApiException(401, "Yêu cầu xác thực.");
     }
 
     public async Task<CheckoutPreviewResponse> PreviewCheckoutAsync(
         List<Guid> cartItemIds,
         CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         if (cartItemIds == null || cartItemIds.Count == 0)
         {
@@ -75,9 +77,9 @@ public class CheckoutService : ICheckoutService
                 {
                     CartItemId = ci.Id,
                     ProductId = ci.ProductId,
-                    ProductName = "Unknown product",
+                    ProductName = "Sản phẩm không xác định",
                     ReasonCode = "PRODUCT_NOT_FOUND",
-                    Message = "This product is no longer available."
+                    Message = "Sản phẩm này không còn khả dụng."
                 });
                 continue;
             }
@@ -100,7 +102,6 @@ public class CheckoutService : ICheckoutService
                 .Select(i => i.ImageUrl)
                 .FirstOrDefault() ?? string.Empty;
 
-            // Compute actual available stock from Steam keys (canonical source)
             var computedStock = ci.Product.SteamKeys
                 .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null);
 
@@ -112,7 +113,7 @@ public class CheckoutService : ICheckoutService
                     ProductId = ci.ProductId,
                     ProductName = ci.Product.Name,
                     ReasonCode = "INSUFFICIENT_STOCK",
-                    Message = $"Only {computedStock} unit(s) in stock. Requested: {ci.Quantity}."
+                    Message = $"Chỉ còn {computedStock} sản phẩm trong kho. Bạn yêu cầu: {ci.Quantity}."
                 });
                 continue;
             }
@@ -141,15 +142,15 @@ public class CheckoutService : ICheckoutService
             {
                 CartItemId = missingId,
                 ProductId = Guid.Empty,
-                ProductName = "Unknown item",
+                ProductName = "Sản phẩm không xác định",
                 ReasonCode = "CART_ITEM_NOT_FOUND",
-                Message = "This cart item could not be found in your cart."
+                Message = "Sản phẩm này không có trong giỏ hàng của bạn."
             });
         }
 
         if (validItems.Count == 0 && invalidItems.Count > 0)
         {
-            blockingMessages.Add("No valid items to checkout. Please remove unavailable items.");
+            blockingMessages.Add("Không có sản phẩm nào có thể thanh toán. Vui lòng xóa các sản phẩm không khả dụng.");
         }
 
         var subtotal = validItems.Sum(i => i.LineTotal);
@@ -171,15 +172,11 @@ public class CheckoutService : ICheckoutService
         List<Guid> selectedCartItemIds,
         CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         if (selectedCartItemIds == null || selectedCartItemIds.Count == 0)
         {
-            throw new ArgumentException("At least one cart item must be selected.");
+            throw new ArgumentException("Vui lòng chọn ít nhất một sản phẩm để thanh toán.");
         }
 
         var idSet = selectedCartItemIds.ToHashSet();
@@ -196,11 +193,9 @@ public class CheckoutService : ICheckoutService
 
         if (cartItems.Count == 0)
         {
-            throw new ArgumentException("No valid cart items found for the selected IDs.");
+            throw new ArgumentException("Không tìm thấy sản phẩm nào trong giỏ hàng.");
         }
 
-        // Prevent duplicate payment attempts: if a pending PaymentTransaction already exists for
-        // an order that contains all of these cart items, reuse the existing checkout URL.
         var existingPendingTx = await _dbContext.PaymentTransactions
             .Where(pt => pt.Provider == 1 && pt.Status == 1)
             .Where(pt => _dbContext.OrderItems.Any(oi => oi.OrderId == pt.OrderId
@@ -215,7 +210,6 @@ public class CheckoutService : ICheckoutService
             var orderItemsCount = await _dbContext.OrderItems
                 .CountAsync(oi => oi.OrderId == existingPendingTx.OrderId, cancellationToken);
 
-            // Only reuse if the existing order has exactly the same cart items we are trying to pay for.
             if (orderItemsCount == cartItems.Count)
             {
                 _logger?.LogInformation(
@@ -247,17 +241,16 @@ public class CheckoutService : ICheckoutService
         {
             if (ci.Product == null || ci.Product.IsDeleted)
             {
-                throw new InvalidOperationException($"Product '{ci.Product?.Name ?? "Unknown"}' is no longer available.");
+                throw new InvalidOperationException($"Sản phẩm '{ci.Product?.Name ?? "không xác định"}' không còn khả dụng.");
             }
 
-            // Compute actual available stock from Steam keys (canonical source)
             var computedStock = ci.Product.SteamKeys
                 .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null);
 
             if (computedStock < ci.Quantity)
             {
                 throw new InvalidOperationException(
-                    $"Insufficient stock for '{ci.Product.Name}': {computedStock} available, {ci.Quantity} requested.");
+                    $"Sản phẩm '{ci.Product.Name}': chỉ còn {computedStock} trong kho, yêu cầu {ci.Quantity}.");
             }
 
             var isActiveDiscount = ci.Product.Discount != null
@@ -295,7 +288,7 @@ public class CheckoutService : ICheckoutService
             || string.IsNullOrWhiteSpace(payOSChecksumKey))
         {
             throw new InvalidOperationException(
-                "PayOS configuration is incomplete. Please set PayOS:ClientId, PayOS:ApiKey, and PayOS:ChecksumKey.");
+                "Cấu hình PayOS không đầy đủ. Vui lòng thiết lập PayOS:ClientId, PayOS:ApiKey và PayOS:ChecksumKey.");
         }
 
         var payOSClient = new PayOSClient(new PayOSOptions
@@ -309,10 +302,10 @@ public class CheckoutService : ICheckoutService
 
         var itemNameSnippets = cartItems
             .Take(3)
-            .Select(ci => ci.Product?.Name ?? "Product")
+            .Select(ci => ci.Product?.Name ?? "Sản phẩm")
             .ToList();
         var itemDescription = itemNameSnippets.Count < cartItems.Count
-            ? $"{string.Join(", ", itemNameSnippets)} +{cartItems.Count - 3} more"
+            ? $"{string.Join(", ", itemNameSnippets)} +{cartItems.Count - 3} sản phẩm khác"
             : string.Join(", ", itemNameSnippets);
 
         var returnUrl = $"{frontendBaseUrl}/payment/return";
@@ -353,7 +346,7 @@ public class CheckoutService : ICheckoutService
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"PayOS payment link creation failed: {ex.Message}");
+            throw new InvalidOperationException($"Tạo liên kết thanh toán PayOS thất bại: {ex.Message}");
         }
 
         var expiresAt = DateTime.UtcNow.AddMinutes(15);
@@ -396,7 +389,6 @@ public class CheckoutService : ICheckoutService
         _dbContext.OrderItems.AddRange(orderItems);
         _dbContext.PaymentTransactions.Add(paymentTransaction);
 
-        // Mark the cart as checked out to prevent reuse.
         if (cartItems.Count > 0 && cartItems[0].Cart != null)
         {
             var cartId = cartItems[0].Cart.Id;
@@ -406,10 +398,6 @@ public class CheckoutService : ICheckoutService
                 trackedCart.IsCheckedOut = true;
             }
         }
-
-        // NOTE: Do NOT decrement Products.Stock here.
-        // Stock is derived from available Steam keys and is updated when keys are actually
-        // consumed during fulfillment in ProcessPaymentReturnAsync.
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -433,6 +421,9 @@ public class CheckoutService : ICheckoutService
         decimal? amountPaid,
         CancellationToken cancellationToken = default)
     {
+        // This is the PayOS webhook/callback — no JWT authentication required.
+        // The service is authenticated via PayOS's signature verification on their end.
+
         _logger?.LogInformation(
             "[CheckoutService.PaymentReturn] ENTRY. orderCode={orderCode}, status={status}, success={success}, transactionId={transactionId}",
             orderCode, status, success, transactionId);
@@ -448,7 +439,6 @@ public class CheckoutService : ICheckoutService
             };
         }
 
-        // Use tracking queries so modifications are saved via SaveChangesAsync.
         var trackedPt = await _dbContext.PaymentTransactions
             .FirstOrDefaultAsync(p => p.ProviderOrderCode == orderCode, cancellationToken);
 
@@ -457,7 +447,7 @@ public class CheckoutService : ICheckoutService
             return new PaymentReturnResponse
             {
                 Success = false,
-                Message = "Payment transaction not found.",
+                Message = "Không tìm thấy giao dịch thanh toán.",
                 OrderCode = orderCode,
                 Status = "not_found"
             };
@@ -478,13 +468,12 @@ public class CheckoutService : ICheckoutService
             return new PaymentReturnResponse
             {
                 Success = false,
-                Message = "Order not found.",
+                Message = "Không tìm thấy đơn hàng.",
                 OrderCode = orderCode,
                 Status = "not_found"
             };
         }
 
-        // Idempotency guard: if order is already completed, return success without reprocessing.
         if (trackedOrder.Status == 4)
         {
             _logger?.LogInformation(
@@ -493,13 +482,12 @@ public class CheckoutService : ICheckoutService
             return new PaymentReturnResponse
             {
                 Success = true,
-                Message = "Order already completed.",
+                Message = "Đơn hàng đã được xử lý trước đó.",
                 OrderCode = orderCode,
                 Status = "PAID"
             };
         }
 
-        // Idempotency guard: if order is already cancelled, return cancel response without reprocessing.
         if (trackedOrder.Status == 0)
         {
             _logger?.LogInformation(
@@ -508,15 +496,12 @@ public class CheckoutService : ICheckoutService
             return new PaymentReturnResponse
             {
                 Success = false,
-                Message = "Payment was already cancelled.",
+                Message = "Đơn hàng đã bị hủy trước đó.",
                 OrderCode = orderCode,
                 Status = "CANCELLED"
             };
         }
 
-        // Query PayOS directly for the authoritative payment status.
-        // Do NOT trust the query-string `success` / `status` params — PayOS can send
-        // mismatched values (e.g. success=false with status=PAID).
         var payOSClientId = _configuration["PayOS:ClientId"];
         var payOSApiKey = _configuration["PayOS:ApiKey"];
         var payOSChecksumKey = _configuration["PayOS:ChecksumKey"];
@@ -528,7 +513,7 @@ public class CheckoutService : ICheckoutService
             return new PaymentReturnResponse
             {
                 Success = false,
-                Message = "PayOS configuration is missing. Cannot verify payment status.",
+                Message = "Cấu hình PayOS không đầy đủ. Không thể xác minh thanh toán.",
                 OrderCode = orderCode,
                 Status = "error"
             };
@@ -554,20 +539,19 @@ public class CheckoutService : ICheckoutService
             return new PaymentReturnResponse
             {
                 Success = false,
-                Message = $"Failed to retrieve payment status from PayOS: {ex.Message}",
+                Message = $"Không thể xác minh thanh toán từ PayOS: {ex.Message}",
                 OrderCode = orderCode,
                 Status = "error"
             };
         }
 
-        // Determine outcome from PayOS-authoritative status only.
         bool isPaidSuccess = payOSData.Status == PaymentLinkStatus.Paid;
-        bool isCancelled  = payOSData.Status == PaymentLinkStatus.Cancelled;
+        bool isCancelled = payOSData.Status == PaymentLinkStatus.Cancelled;
 
         if (isPaidSuccess)
         {
             _logger?.LogInformation(
-                "[CheckoutService.PaymentReturn] PAID branch entered. OrderId={OrderId}, ProviderOrderCode={OrderCode}",
+                "[CheckoutService.PaymentReturn] PAID branch. OrderId={OrderId}, ProviderOrderCode={OrderCode}",
                 trackedOrder.Id, orderCode);
 
             trackedOrder.Status = 4;
@@ -596,7 +580,7 @@ public class CheckoutService : ICheckoutService
                     if (availableKey != null)
                     {
                         availableKey.OrderId = trackedOrder.Id;
-                        availableKey.Status = 2; // Sold
+                        availableKey.Status = 2;
                         availableKey.UpdatedAt = DateTime.UtcNow;
                         break;
                     }
@@ -605,20 +589,16 @@ public class CheckoutService : ICheckoutService
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            // Sync Products.Stock for all affected products after key consumption
             var affectedProductIds = trackedOrder.OrderItems.Select(oi => oi.ProductId).Distinct().ToList();
             foreach (var productId in affectedProductIds)
             {
                 await SyncProductStockAsync(productId, cancellationToken);
             }
 
-            // Remove purchased cart items from the user's cart.
             var cartItemIdsToRemove = trackedOrder.OrderItems
                 .Where(oi => oi.SourceCartItemId.HasValue)
                 .Select(oi => oi.SourceCartItemId!.Value)
                 .ToList();
-
-            var cartItemsRemovedCount = 0;
 
             if (cartItemIdsToRemove.Count > 0)
             {
@@ -629,36 +609,24 @@ public class CheckoutService : ICheckoutService
                 if (cartItemsToRemove.Count > 0)
                 {
                     _dbContext.CartItems.RemoveRange(cartItemsToRemove);
-                    cartItemsRemovedCount = cartItemsToRemove.Count;
-                    _logger?.LogInformation(
-                        "[CheckoutService.PaymentReturn] Removed {Count} cart items for completed order. OrderId={OrderId}",
-                        cartItemsToRemove.Count, trackedOrder.Id);
                 }
             }
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             _logger?.LogInformation(
-                "[CheckoutService.PaymentReturn] PAID save complete. OrderId={OrderId}, Order.Status={OrderStatus}, PaymentTx.Status={TxStatus}, CartItemsRemoved={CartItemsRemoved}",
-                trackedOrder.Id, trackedOrder.Status, trackedPt.Status, cartItemsRemovedCount);
+                "[CheckoutService.PaymentReturn] PAID save complete. OrderId={OrderId}",
+                trackedOrder.Id);
 
-            // ── EMAIL FULFILLMENT ────────────────────────────────────────────────
-            // Idempotency: skip if email was already sent successfully.
             if (!trackedOrder.FulfillmentEmailSentAt.HasValue)
             {
                 await SendFulfillmentEmailAsync(trackedOrder, trackedPt.ProviderOrderCode, cancellationToken);
-            }
-            else
-            {
-                _logger?.LogInformation(
-                    "[CheckoutService.PaymentReturn] Fulfillment email already sent for OrderId={OrderId}, skipping",
-                    trackedOrder.Id);
             }
 
             return new PaymentReturnResponse
             {
                 Success = true,
-                Message = "Payment successful. Your order is complete.",
+                Message = "Thanh toán thành công. Đơn hàng của bạn đã hoàn tất.",
                 OrderCode = orderCode,
                 Status = "PAID"
             };
@@ -667,7 +635,7 @@ public class CheckoutService : ICheckoutService
         if (isCancelled)
         {
             _logger?.LogInformation(
-                "[CheckoutService.PaymentReturn] CANCELLED branch entered. OrderId={OrderId}, ProviderOrderCode={OrderCode}",
+                "[CheckoutService.PaymentReturn] CANCELLED branch. OrderId={OrderId}, ProviderOrderCode={OrderCode}",
                 trackedOrder.Id, orderCode);
 
             trackedOrder.Status = 0;
@@ -675,72 +643,29 @@ public class CheckoutService : ICheckoutService
             trackedOrder.UpdatedAt = DateTime.UtcNow;
             trackedPt.UpdatedAt = DateTime.UtcNow;
 
-            // Reset IsCheckedOut so the user's cart becomes visible again after cancellation.
-            // The cart was marked IsCheckedOut=true during CreatePaymentAsync to prevent reuse.
-            // On cancel, the order is dead — the user needs to see their cart again.
-            //
-            // FIX: Use trackedOrder.CartId to identify the exact cart that was checked out,
-            // instead of querying by UserId+IsCheckedOut. This avoids the conflict with the
-            // unique filtered index (UserId WHERE IsCheckedOut=false) that only allows one
-            // unchecked-out cart per user. A second unchecked-out cart cannot exist for the
-            // same user due to this index, so querying by UserId alone finds nothing
-            // when IsCheckedOut=true, and even if a new cart was created, it would have a
-            // DIFFERENT CartId than the one on this order.
             if (trackedOrder.CartId.HasValue)
             {
                 var trackedCart = await _dbContext.Carts
                     .FirstOrDefaultAsync(c => c.Id == trackedOrder.CartId.Value, cancellationToken);
                 if (trackedCart != null)
                 {
-                    _logger?.LogInformation(
-                        "[CheckoutService.PaymentReturn] Resetting IsCheckedOut=false on cart. CartId={CartId}",
-                        trackedCart.Id);
                     trackedCart.IsCheckedOut = false;
                 }
-                else
-                {
-                    _logger?.LogWarning(
-                        "[CheckoutService.PaymentReturn] Cart not found for CartId={CartId}. OrderId={OrderId}",
-                        trackedOrder.CartId, trackedOrder.Id);
-                }
             }
-            else
-            {
-                _logger?.LogWarning(
-                    "[CheckoutService.PaymentReturn] Order has no CartId. OrderId={OrderId}. Attempting fallback by UserId.",
-                    trackedOrder.Id);
-                var fallbackCart = await _dbContext.Carts
-                    .FirstOrDefaultAsync(c => c.UserId == trackedOrder.UserId && c.IsCheckedOut, cancellationToken);
-                if (fallbackCart != null)
-                {
-                    _logger?.LogInformation(
-                        "[CheckoutService.PaymentReturn] Fallback reset IsCheckedOut=false on cart. CartId={CartId}",
-                        fallbackCart.Id);
-                    fallbackCart.IsCheckedOut = false;
-                }
-            }
-
-            // NOTE: Products.Stock was never decremented during payment creation,
-            // so no restoration needed here. Keys were never consumed.
 
             await _dbContext.SaveChangesAsync(cancellationToken);
-
-            _logger?.LogInformation(
-                "[CheckoutService.PaymentReturn] CANCELLED save complete. OrderId={OrderId}, Order.Status={OrderStatus}, PaymentTx.Status={TxStatus}",
-                trackedOrder.Id, trackedOrder.Status, trackedPt.Status);
 
             return new PaymentReturnResponse
             {
                 Success = false,
-                Message = "Payment was cancelled. Items have been restocked.",
+                Message = "Thanh toán đã bị hủy. Các sản phẩm đã được hoàn lại vào giỏ hàng.",
                 OrderCode = orderCode,
                 Status = "CANCELLED"
             };
         }
 
-        // All other PayOS statuses = payment failed.
         _logger?.LogInformation(
-            "[CheckoutService.PaymentReturn] FAILED branch entered. OrderId={OrderId}, ProviderOrderCode={OrderCode}, PayOSStatus={PayOSStatus}",
+            "[CheckoutService.PaymentReturn] FAILED branch. OrderId={OrderId}, ProviderOrderCode={OrderCode}, PayOSStatus={PayOSStatus}",
             trackedOrder.Id, orderCode, payOSData.Status);
 
         trackedOrder.Status = 1;
@@ -748,51 +673,22 @@ public class CheckoutService : ICheckoutService
         trackedOrder.UpdatedAt = DateTime.UtcNow;
         trackedPt.UpdatedAt = DateTime.UtcNow;
 
-        // Reset IsCheckedOut so the user's cart becomes visible again after payment failure.
-        // Use trackedOrder.CartId to identify the exact cart (same logic as CANCELLED branch).
         if (trackedOrder.CartId.HasValue)
         {
             var failedCart = await _dbContext.Carts
                 .FirstOrDefaultAsync(c => c.Id == trackedOrder.CartId.Value, cancellationToken);
             if (failedCart != null)
             {
-                _logger?.LogInformation(
-                    "[CheckoutService.PaymentReturn] Resetting IsCheckedOut=false on failed payment cart. CartId={CartId}",
-                    failedCart.Id);
                 failedCart.IsCheckedOut = false;
             }
-            else
-            {
-                _logger?.LogWarning(
-                    "[CheckoutService.PaymentReturn] Cart not found for CartId={CartId}. OrderId={OrderId}",
-                    trackedOrder.CartId, trackedOrder.Id);
-            }
         }
-        else
-        {
-            _logger?.LogWarning(
-                "[CheckoutService.PaymentReturn] Order has no CartId on failure. OrderId={OrderId}. Attempting fallback.",
-                trackedOrder.Id);
-            var fallbackFailedCart = await _dbContext.Carts
-                .FirstOrDefaultAsync(c => c.UserId == trackedOrder.UserId && c.IsCheckedOut, cancellationToken);
-            if (fallbackFailedCart != null)
-            {
-                _logger?.LogInformation(
-                    "[CheckoutService.PaymentReturn] Fallback reset IsCheckedOut=false on failed cart. CartId={CartId}",
-                    fallbackFailedCart.Id);
-                fallbackFailedCart.IsCheckedOut = false;
-            }
-        }
-
-        // NOTE: Products.Stock was never decremented during payment creation,
-        // so no restoration needed here. Keys were never consumed.
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new PaymentReturnResponse
         {
             Success = false,
-            Message = "Payment failed. Please try again or contact support if money was deducted.",
+            Message = "Thanh toán thất bại. Vui lòng thử lại hoặc liên hệ hỗ trợ nếu đã bị trừ tiền.",
             OrderCode = orderCode,
             Status = "FAILED"
         };
@@ -844,7 +740,6 @@ public class CheckoutService : ICheckoutService
             return;
         }
 
-        // Group Steam keys by product so each product row shows its keys.
         var steamKeysByProduct = order.SteamKeys
             .Where(sk => sk.Product != null && !string.IsNullOrWhiteSpace(sk.KeyValue))
             .GroupBy(sk => sk.ProductId)
@@ -853,9 +748,6 @@ public class CheckoutService : ICheckoutService
                 g => g.ToList()
             );
 
-        // Group product images by product — pick primary image first, then lowest DisplayOrder.
-        // EF Core does NOT guarantee collection ordering, so we must explicitly order here.
-        // DistinctBy alone is non-deterministic: it drops duplicates without specifying which survives.
         var imagesByProduct = order.SteamKeys
             .Where(sk => sk.Product?.ProductImages != null)
             .SelectMany(sk => sk.Product!.ProductImages
@@ -875,18 +767,10 @@ public class CheckoutService : ICheckoutService
             steamKeysByProduct.TryGetValue(oi.ProductId, out var keysForProduct);
             imagesByProduct.TryGetValue(oi.ProductId, out var imageUrl);
 
-            _logger?.LogInformation(
-                "[FulfillmentEmail] Product={ProductName} ProductId={ProductId} "
-                + "SelectedImage={ImageUrl} HasImage={HasImage}",
-                oi.Product?.Name ?? "Unknown Product",
-                oi.ProductId,
-                imageUrl ?? "(none)",
-                imageUrl != null);
-
             return new FulfillmentOrderItem
             {
                 ProductId = oi.ProductId,
-                ProductName = oi.Product?.Name ?? "Unknown Product",
+                ProductName = oi.Product?.Name ?? "Sản phẩm không xác định",
                 ProductImageUrl = imageUrl,
                 Quantity = oi.Quantity,
                 UnitPrice = oi.UnitPrice,
@@ -921,7 +805,6 @@ public class CheckoutService : ICheckoutService
         {
             await _emailService.SendFulfillmentEmailAsync(request, cancellationToken);
 
-            // Record success.
             order.FulfillmentEmailSentAt = DateTime.UtcNow;
             order.FulfillmentLastError = string.Empty;
             await _dbContext.SaveChangesAsync(cancellationToken);
@@ -932,7 +815,6 @@ public class CheckoutService : ICheckoutService
         }
         catch (Exception ex)
         {
-            // Log failure but do NOT rollback fulfillment. Keys are sold, order is paid.
             order.FulfillmentLastError = ex.Message;
             await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -941,19 +823,5 @@ public class CheckoutService : ICheckoutService
                 "[CheckoutService.SendFulfillmentEmail] Email sending failed. OrderId={OrderId}, To={Email}, Error={Error}",
                 order.Id, toEmail, ex.Message);
         }
-    }
-
-    private Guid GetCurrentUserId()
-    {
-        var user = _httpContextAccessor.HttpContext?.User;
-        if (user?.Identity?.IsAuthenticated == true)
-        {
-            var userIdClaim = user.FindFirst("UserId")?.Value;
-            if (Guid.TryParse(userIdClaim, out var userId))
-            {
-                return userId;
-            }
-        }
-        return Guid.Empty;
     }
 }

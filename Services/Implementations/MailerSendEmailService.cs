@@ -234,29 +234,105 @@ public class MailerSendEmailService : IEmailService
         return $"Verify your HotWaterGas account\n\nUse this verification code: {verificationCode}\nThis code expires in 15 minutes.\n\nIf you did not create a HotWaterGas account, you can ignore this email.";
     }
 
-    private static string BuildPasswordResetHtml(string resetCode)
+    private string BuildPasswordResetHtml(string resetCode)
     {
-        return $$"""
+        var safeCode = System.Net.WebUtility.HtmlEncode(resetCode);
+        var logoUrl = BuildLogoUrl();
+        var logoSection = !string.IsNullOrWhiteSpace(logoUrl)
+            ? $"""
+              <img
+                src="{System.Net.WebUtility.HtmlEncode(logoUrl)}"
+                alt="HotWaterGas"
+                width="40"
+                height="40"
+                style="display:inline-block;vertical-align:middle;margin-right:10px;border-radius:6px;"
+              />
+              """
+            : string.Empty;
+
+        return $"""
 <!doctype html>
 <html lang="en">
-  <body style="margin:0;padding:0;background:#f6f7fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
-    <div style="max-width:640px;margin:0 auto;padding:32px 16px;">
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;padding:32px;">
-        <h1 style="margin:0 0 16px;font-size:24px;line-height:1.2;">Reset your HotWaterGas password</h1>
-        <p style="margin:0 0 24px;font-size:16px;line-height:1.6;">Use the password reset code below to continue. The code expires in 15 minutes.</p>
-        <div style="display:inline-block;padding:16px 24px;border-radius:12px;background:#111827;color:#ffffff;font-size:28px;letter-spacing:6px;font-weight:700;">{{resetCode}}</div>
-        <p style="margin:24px 0 0;font-size:14px;line-height:1.6;color:#6b7280;">If you did not request this reset, you can ignore this message and your password will remain unchanged.</p>
-        <p style="margin:12px 0 0;font-size:14px;line-height:1.6;color:#6b7280;">For your security, never share this code with anyone.</p>
-      </div>
-    </div>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Đặt lại mật khẩu — HotWaterGas</title>
+</head>
+<body style="margin:0;padding:0;background:#0f1117;font-family:Arial,Helvetica,sans-serif;color:#e5e7eb;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f1117;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+
+          <!-- ── HEADER ── -->
+          <tr>
+            <td style="background:#111827;border-radius:12px 12px 0 0;border:1px solid #1f2937;border-bottom:none;padding:32px 32px 24px;">
+              <h1 style="margin:0;font-size:28px;font-weight:800;color:#f9fafb;letter-spacing:-0.5px;line-height:40px;">
+                {logoSection}HotWater<span style="color:#EF4444;">Gas</span>
+              </h1>
+              <h2 style="margin:20px 0 0;font-size:20px;font-weight:600;color:#f9fafb;">
+                Đặt lại mật khẩu
+              </h2>
+              <p style="margin:8px 0 0;font-size:14px;color:#9ca3af;line-height:1.6;">
+                Sử dụng mã xác minh bên dưới để tiếp tục đặt lại mật khẩu cho tài khoản của bạn.
+              </p>
+            </td>
+          </tr>
+
+          <!-- ── OTP CODE CARD ── -->
+          <tr>
+            <td style="background:#161b22;border:1px solid #1f2937;border-top:none;border-bottom:none;padding:32px;text-align:center;">
+              <p style="margin:0 0 12px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.8px;">
+                Mã xác minh
+              </p>
+              <div style="display:inline-block;background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:18px 36px;margin:0 auto;">
+                <span style="display:block;font-family:'Courier New',Courier,monospace;font-size:32px;font-weight:700;color:#58a6ff;letter-spacing:8px;line-height:1;user-select:all;-webkit-user-select:all;">{safeCode}</span>
+              </div>
+              <p style="margin:16px 0 0;font-size:13px;color:#9ca3af;line-height:1.6;">
+                Mã sẽ hết hạn sau <strong style="color:#f9fafb;">15 phút</strong>.
+              </p>
+            </td>
+          </tr>
+
+          <!-- ── SECURITY WARNING ── -->
+          <tr>
+            <td style="background:#161b22;border:1px solid #1f2937;border-top:none;border-bottom:none;padding:0 32px 24px;">
+              <div style="background:#1f2937;border-radius:8px;padding:16px;border:1px solid #374151;">
+                <p style="margin:0;font-size:13px;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:0.5px;">
+                  &#9888;&#65039; Cảnh báo bảo mật
+                </p>
+                <p style="margin:8px 0 0;font-size:13px;color:#d1d5db;line-height:1.6;">
+                  Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này. Không chia sẻ mã xác minh với bất kỳ ai để đảm bảo an toàn tài khoản.
+                </p>
+              </div>
+            </td>
+          </tr>
+
+          <!-- ── FOOTER ── -->
+          <tr>
+            <td style="background:#161b22;border-radius:0 0 12px 12px;border:1px solid #1f2937;border-top:none;padding:24px 32px;">
+              <p style="margin:0 0 6px;font-size:13px;color:#6b7280;text-align:center;">
+                Nếu bạn cần hỗ trợ, vui lòng liên hệ: <a href="mailto:support@hotwatergas.com" style="color:#3b82f6;text-decoration:none;">support@hotwatergas.com</a>
+              </p>
+              <p style="margin:12px 0 0;font-size:11px;color:#4b5563;text-align:center;line-height:1.6;">
+                HotWaterGas &mdash; Kho game Steam giá rẻ<br>
+                Email này được gửi từ hệ thống tự động. Vui lòng không reply email này.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
 </html>
 """;
     }
 
     private static string BuildPasswordResetText(string resetCode)
     {
-        return $"Reset your HotWaterGas password\n\nUse this password reset code: {resetCode}\nThis code expires in 15 minutes.\n\nIf you did not request this reset, ignore this email.";
+        return $"Đặt lại mật khẩu HotWaterGas\n\nMa xac minh cua ban: {resetCode}\nMa se het han sau 15 phut.\n\nNeu ban khong yeu cau dat lai mat khau, vui long bo qua email nay.\nKhong chia se ma xac minh voi bat ky ai.\n\nHotWaterGas — support@hotwatergas.com";
     }
 
     private string BuildFulfillmentHtml(FulfillmentEmailRequest r)

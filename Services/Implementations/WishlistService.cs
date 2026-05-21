@@ -1,7 +1,7 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Repos.Models;
 using Services.DTOs;
+using Services.Implementations;
 using Services.Interfaces;
 
 namespace Services.Implementations;
@@ -9,21 +9,23 @@ namespace Services.Implementations;
 public class WishlistService : IWishlistService
 {
     private readonly HotWaterGasDBContext _dbContext;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ICurrentUserService _currentUserService;
 
-    public WishlistService(HotWaterGasDBContext dbContext, IHttpContextAccessor httpContextAccessor)
+    public WishlistService(HotWaterGasDBContext dbContext, ICurrentUserService currentUserService)
     {
         _dbContext = dbContext;
-        _httpContextAccessor = httpContextAccessor;
+        _currentUserService = currentUserService;
+    }
+
+    private Guid RequireUserId()
+    {
+        return _currentUserService.UserId
+            ?? throw new ApiException(401, "Yêu cầu xác thực.");
     }
 
     public async Task<WishlistResponse> GetWishlistAsync(CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         var wishlist = await _dbContext.Wishlists
             .AsNoTracking()
@@ -55,11 +57,7 @@ public class WishlistService : IWishlistService
 
     public async Task<WishlistItemResponse> AddToWishlistAsync(Guid productId, CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         var product = await _dbContext.Products
             .AsNoTracking()
@@ -69,7 +67,7 @@ public class WishlistService : IWishlistService
 
         if (product is null)
         {
-            throw new KeyNotFoundException("Product not found.");
+            throw new KeyNotFoundException("Sản phẩm không tồn tại.");
         }
 
         var wishlist = await _dbContext.Wishlists
@@ -92,7 +90,7 @@ public class WishlistService : IWishlistService
 
         if (existingItem is not null)
         {
-            throw new InvalidOperationException("Product already in wishlist.");
+            throw new InvalidOperationException("Sản phẩm đã có trong danh sách yêu thích.");
         }
 
         var now = DateTime.UtcNow;
@@ -112,11 +110,7 @@ public class WishlistService : IWishlistService
 
     public async Task RemoveFromWishlistAsync(Guid productId, CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         var wishlist = await _dbContext.Wishlists
             .FirstOrDefaultAsync(w => w.UserId == userId, cancellationToken);
@@ -131,7 +125,7 @@ public class WishlistService : IWishlistService
 
         if (item is null)
         {
-            throw new KeyNotFoundException("Item not found in wishlist.");
+            throw new KeyNotFoundException("Sản phẩm không có trong danh sách yêu thích.");
         }
 
         _dbContext.WishlistItems.Remove(item);
@@ -160,7 +154,6 @@ public class WishlistService : IWishlistService
             .Select(i => i.ImageUrl)
             .FirstOrDefault() ?? string.Empty;
 
-        // Compute actual available stock from Steam keys (canonical source)
         var computedStock = product?.SteamKeys
             .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null) ?? 0;
 
@@ -177,19 +170,5 @@ public class WishlistService : IWishlistService
             InStock = computedStock > 0,
             AddedAt = createdAt
         };
-    }
-
-    private Guid GetCurrentUserId()
-    {
-        var user = _httpContextAccessor.HttpContext?.User;
-        if (user?.Identity?.IsAuthenticated == true)
-        {
-            var userIdClaim = user.FindFirst("UserId")?.Value;
-            if (Guid.TryParse(userIdClaim, out var userId))
-            {
-                return userId;
-            }
-        }
-        return Guid.Empty;
     }
 }

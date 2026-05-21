@@ -12,4 +12,7 @@ public interface IAuthService
     Task<ForgotPasswordVerifyResponse> ForgotPasswordVerifyAsync(ForgotPasswordVerifyRequest request, CancellationToken cancellationToken = default);
     Task<MessageResponse> ForgotPasswordResetAsync(ForgotPasswordResetRequest request, CancellationToken cancellationToken = default);
     string GenerateAccessTokenForRefresh(Repos.Models.Users user);
+    Task<UserProfileResponse> GetUserProfileAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<UserProfileResponse> UpdateProfileAsync(Guid userId, UpdateProfileRequest request, CancellationToken cancellationToken = default);
+    Task<MessageResponse> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default);
 }

@@ -407,4 +407,81 @@ public class AuthService : IAuthService
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(bytes);
     }
+
+    public async Task<UserProfileResponse> GetUserProfileAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (user is null)
+        {
+            throw new ApiException(404, "Không tìm thấy người dùng.");
+        }
+
+        return new UserProfileResponse
+        {
+            Id = user.Id,
+            Email = user.Email,
+            DisplayName = user.DisplayName,
+            Role = user.Role?.Name ?? "Customer",
+            IsEmailVerified = user.IsEmailVerified
+        };
+    }
+
+    public async Task<UserProfileResponse> UpdateProfileAsync(Guid userId, UpdateProfileRequest request, CancellationToken cancellationToken = default)
+    {
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (user is null)
+        {
+            throw new ApiException(404, "Không tìm thấy người dùng.");
+        }
+
+        user.DisplayName = request.DisplayName.Trim();
+
+        _userRepository.UpdateUser(user);
+        await _userRepository.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("[Auth.UpdateProfile] Updated DisplayName UserId={UserId}", userId);
+
+        // Return a new access token so the frontend can immediately sync the displayName
+        // in AuthContext without requiring the user to re-authenticate.
+        var roleName = user.Role?.Name ?? "Customer";
+        var newAccessToken = _jwtTokenService.GenerateToken(user, roleName);
+
+        return new UserProfileResponse
+        {
+            Id = user.Id,
+            Email = user.Email,
+            DisplayName = user.DisplayName,
+            Role = roleName,
+            IsEmailVerified = user.IsEmailVerified,
+            AccessToken = newAccessToken
+        };
+    }
+
+    public async Task<MessageResponse> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.NewPassword != request.ConfirmPassword)
+        {
+            throw new ApiException(400, "Mật khẩu mới và xác nhận mật khẩu không khớp.");
+        }
+
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (user is null)
+        {
+            throw new ApiException(404, "Không tìm thấy người dùng.");
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
+        {
+            throw new ApiException(400, "Mật khẩu hiện tại không đúng.");
+        }
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+
+        _userRepository.UpdateUser(user);
+        await _userRepository.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("[Auth.ChangePassword] Password changed UserId={UserId}", userId);
+
+        return new MessageResponse { Message = "Mật khẩu đã được thay đổi thành công." };
+    }
 }

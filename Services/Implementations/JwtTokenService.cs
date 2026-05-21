@@ -30,7 +30,11 @@ public class JwtTokenService : IJwtTokenService
 
         var claims = new List<Claim>
         {
-            new("UserId", user.Id.ToString()),
+            // ClaimTypes.NameIdentifier = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"
+            // This is the standard claim type that JWT bearer middleware resolves to by default.
+            // Do NOT use a plain string literal "UserId" here — FindFirstValue() does exact
+            // string comparison and would fail to match, causing 401 on every authenticated request.
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.Role, roleName),
             new("displayName", user.DisplayName)

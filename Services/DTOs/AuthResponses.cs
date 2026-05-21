@@ -47,3 +47,13 @@ public class ForgotPasswordVerifyResponse
 {
     public string ResetToken { get; set; } = string.Empty;
 }
+
+public class UserProfileResponse
+{
+    public Guid Id { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public bool IsEmailVerified { get; set; }
+    public string? AccessToken { get; set; }
+}

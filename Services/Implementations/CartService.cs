@@ -1,7 +1,7 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Repos.Models;
 using Services.DTOs;
+using Services.Implementations;
 using Services.Interfaces;
 
 namespace Services.Implementations;
@@ -9,21 +9,23 @@ namespace Services.Implementations;
 public class CartService : ICartService
 {
     private readonly HotWaterGasDBContext _dbContext;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ICurrentUserService _currentUserService;
 
-    public CartService(HotWaterGasDBContext dbContext, IHttpContextAccessor httpContextAccessor)
+    public CartService(HotWaterGasDBContext dbContext, ICurrentUserService currentUserService)
     {
         _dbContext = dbContext;
-        _httpContextAccessor = httpContextAccessor;
+        _currentUserService = currentUserService;
+    }
+
+    private Guid RequireUserId()
+    {
+        return _currentUserService.UserId
+            ?? throw new ApiException(401, "Yêu cầu xác thực.");
     }
 
     public async Task<CartResponse> GetMyCartAsync(CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         var cart = await _dbContext.Carts
             .AsNoTracking()
@@ -68,11 +70,7 @@ public class CartService : ICartService
 
     public async Task<CartResponse> AddToCartAsync(Guid productId, int quantity, CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         var product = await _dbContext.Products
             .AsNoTracking()
@@ -82,7 +80,7 @@ public class CartService : ICartService
 
         if (product is null)
         {
-            throw new KeyNotFoundException("Product not found.");
+            throw new KeyNotFoundException("Sản phẩm không tồn tại.");
         }
 
         var cart = await _dbContext.Carts
@@ -124,24 +122,19 @@ public class CartService : ICartService
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        // Return full cart response for frontend state consistency
         return await GetMyCartAsync(cancellationToken);
     }
 
     public async Task<CartItemResponse> UpdateCartItemQuantityAsync(Guid productId, int quantity, CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         var cart = await _dbContext.Carts
             .FirstOrDefaultAsync(c => c.UserId == userId && !c.IsCheckedOut, cancellationToken);
 
         if (cart is null)
         {
-            throw new KeyNotFoundException("Cart not found.");
+            throw new KeyNotFoundException("Giỏ hàng không tồn tại.");
         }
 
         var cartItem = await _dbContext.CartItems
@@ -149,14 +142,14 @@ public class CartService : ICartService
 
         if (cartItem is null)
         {
-            throw new KeyNotFoundException("Cart item not found.");
+            throw new KeyNotFoundException("Sản phẩm không có trong giỏ hàng.");
         }
 
         if (quantity <= 0)
         {
             _dbContext.CartItems.Remove(cartItem);
             await _dbContext.SaveChangesAsync(cancellationToken);
-            
+
             return new CartItemResponse
             {
                 CartItemId = cartItem.Id,
@@ -179,11 +172,7 @@ public class CartService : ICartService
 
     public async Task RemoveFromCartAsync(Guid productId, CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         var cart = await _dbContext.Carts
             .FirstOrDefaultAsync(c => c.UserId == userId && !c.IsCheckedOut, cancellationToken);
@@ -198,7 +187,7 @@ public class CartService : ICartService
 
         if (cartItem is null)
         {
-            throw new KeyNotFoundException("Cart item not found.");
+            throw new KeyNotFoundException("Sản phẩm không có trong giỏ hàng.");
         }
 
         _dbContext.CartItems.Remove(cartItem);
@@ -208,7 +197,7 @@ public class CartService : ICartService
     private async Task<CartItemResponse> GetCartItemResponseAsync(Guid cartItemId, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        
+
         var item = await _dbContext.CartItems
             .AsNoTracking()
             .Include(ci => ci.Product)
@@ -251,7 +240,6 @@ public class CartService : ICartService
             .Select(i => i.ImageUrl)
             .FirstOrDefault() ?? string.Empty;
 
-        // Compute actual available stock from Steam keys (canonical source)
         var computedStock = product?.SteamKeys
             .Count(sk => sk.Status == 0 && sk.OrderId == null && sk.InvalidatedAt == null) ?? 0;
 
@@ -267,19 +255,5 @@ public class CartService : ICartService
             Subtotal = finalPrice * item.Quantity,
             InStock = computedStock > 0
         };
-    }
-
-    private Guid GetCurrentUserId()
-    {
-        var user = _httpContextAccessor.HttpContext?.User;
-        if (user?.Identity?.IsAuthenticated == true)
-        {
-            var userIdClaim = user.FindFirst("UserId")?.Value;
-            if (Guid.TryParse(userIdClaim, out var userId))
-            {
-                return userId;
-            }
-        }
-        return Guid.Empty;
     }
 }

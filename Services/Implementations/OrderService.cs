@@ -1,7 +1,7 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Repos.Models;
 using Services.DTOs;
+using Services.Implementations;
 using Services.Interfaces;
 
 namespace Services.Implementations;
@@ -9,21 +9,23 @@ namespace Services.Implementations;
 public class OrderService : IOrderService
 {
     private readonly HotWaterGasDBContext _dbContext;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ICurrentUserService _currentUserService;
 
-    public OrderService(HotWaterGasDBContext dbContext, IHttpContextAccessor httpContextAccessor)
+    public OrderService(HotWaterGasDBContext dbContext, ICurrentUserService currentUserService)
     {
         _dbContext = dbContext;
-        _httpContextAccessor = httpContextAccessor;
+        _currentUserService = currentUserService;
+    }
+
+    private Guid RequireUserId()
+    {
+        return _currentUserService.UserId
+            ?? throw new ApiException(401, "Yêu cầu xác thực.");
     }
 
     public async Task<List<MyOrderListItemResponse>> GetMyOrdersAsync(CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         var orders = await _dbContext.Orders
             .AsNoTracking()
@@ -47,11 +49,7 @@ public class OrderService : IOrderService
 
     public async Task<MyOrderDetailResponse?> GetMyOrderDetailAsync(Guid orderId, CancellationToken cancellationToken = default)
     {
-        var userId = GetCurrentUserId();
-        if (userId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("User not authenticated.");
-        }
+        var userId = RequireUserId();
 
         var order = await _dbContext.Orders
             .AsNoTracking()
@@ -224,19 +222,5 @@ public class OrderService : IOrderService
             1 => "Thanh toán QR",
             _ => "Không xác định"
         };
-    }
-
-    private Guid GetCurrentUserId()
-    {
-        var user = _httpContextAccessor.HttpContext?.User;
-        if (user?.Identity?.IsAuthenticated == true)
-        {
-            var userIdClaim = user.FindFirst("UserId")?.Value;
-            if (Guid.TryParse(userIdClaim, out var userId))
-            {
-                return userId;
-            }
-        }
-        return Guid.Empty;
     }
 }
