@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Services.DTOs;
 using Services.Interfaces;
 
@@ -15,17 +16,29 @@ public class MailerSendEmailService : IEmailService
     private const string DefaultProductImageUrl =
         "https://res.cloudinary.com/do4qn1p2e/image/upload/v1234567890/products/placeholder.png";
 
+    private static readonly Dictionary<string, string> PaymentStatusVietnamese = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["PAID"]       = "Đã thanh toán",
+        ["PENDING"]    = "Đang chờ",
+        ["CANCELLED"]  = "Đã hủy",
+        ["FAILED"]     = "Thất bại",
+        ["PROCESSING"] = "Đang xử lý"
+    };
+
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly FrontendOptions _frontendOptions;
     private readonly ILogger<MailerSendEmailService> _logger;
 
     public MailerSendEmailService(
         HttpClient httpClient,
         IConfiguration configuration,
+        IOptions<FrontendOptions> frontendOptions,
         ILogger<MailerSendEmailService> logger)
     {
         _httpClient = httpClient;
         _configuration = configuration;
+        _frontendOptions = frontendOptions.Value;
         _logger = logger;
     }
 
@@ -104,13 +117,13 @@ public class MailerSendEmailService : IEmailService
 
         if (string.IsNullOrWhiteSpace(apiToken) || string.IsNullOrWhiteSpace(fromEmail) || string.IsNullOrWhiteSpace(fromName))
         {
-          var missing = new List<string>();
-          if (string.IsNullOrWhiteSpace(apiToken)) missing.Add("ApiToken");
-          if (string.IsNullOrWhiteSpace(fromEmail)) missing.Add("FromEmail");
-          if (string.IsNullOrWhiteSpace(fromName)) missing.Add("FromName");
+            var missing = new List<string>();
+            if (string.IsNullOrWhiteSpace(apiToken)) missing.Add("ApiToken");
+            if (string.IsNullOrWhiteSpace(fromEmail)) missing.Add("FromEmail");
+            if (string.IsNullOrWhiteSpace(fromName)) missing.Add("FromName");
 
-          _logger.LogError("[MailerSend.Config] Missing configuration values: {Missing}", string.Join(", ", missing));
-          throw new InvalidOperationException($"MailerSend configuration missing: {string.Join(", ", missing)}");
+            _logger.LogError("[MailerSend.Config] Missing configuration values: {Missing}", string.Join(", ", missing));
+            throw new InvalidOperationException($"MailerSend configuration missing: {string.Join(", ", missing)}");
         }
 
         var recipientName = string.IsNullOrWhiteSpace(request.ToName) ? request.ToEmail : request.ToName;
@@ -149,6 +162,23 @@ public class MailerSendEmailService : IEmailService
         }
 
         _logger.LogInformation("[MailerSend] Email success to {Email} Subject={Subject}", request.ToEmail, request.Subject);
+    }
+
+    private string BuildLogoUrl()
+    {
+        var baseUrl = _frontendOptions.BaseUrl;
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return string.Empty;
+        }
+        return $"{baseUrl.TrimEnd('/')}/icon.png";
+    }
+
+    private static string LocalizePaymentStatus(string status)
+    {
+        return PaymentStatusVietnamese.TryGetValue(status, out var localized)
+            ? localized
+            : status;
     }
 
     private string BuildAbsoluteImageUrl(string? imageUrl)
@@ -229,9 +259,27 @@ public class MailerSendEmailService : IEmailService
         return $"Reset your HotWaterGas password\n\nUse this password reset code: {resetCode}\nThis code expires in 15 minutes.\n\nIf you did not request this reset, ignore this email.";
     }
 
-    private static string BuildFulfillmentHtml(FulfillmentEmailRequest r)
+    private string BuildFulfillmentHtml(FulfillmentEmailRequest r)
     {
+        var logoUrl = !string.IsNullOrWhiteSpace(r.LogoUrl)
+            ? System.Net.WebUtility.HtmlEncode(r.LogoUrl)
+            : BuildLogoUrl();
+
+        var logoSection = !string.IsNullOrWhiteSpace(logoUrl)
+            ? $"""
+              <img
+                src="{logoUrl}"
+                alt="HotWaterGas"
+                width="40"
+                height="40"
+                style="display:inline-block;vertical-align:middle;margin-right:10px;border-radius:6px;"
+              />
+              """
+            : string.Empty;
+
+        var localizedStatus = LocalizePaymentStatus(r.PaymentStatus);
         var productRows = string.Join("\n", r.Items.Select(BuildFulfillmentItemHtml));
+
         return $"""
 <!doctype html>
 <html lang="en">
@@ -252,8 +300,8 @@ public class MailerSendEmailService : IEmailService
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td>
-                    <h1 style="margin:0;font-size:28px;font-weight:800;color:#f9fafb;letter-spacing:-0.5px;">
-                      HotWater<span style="color:#3b82f6;">Gas</span>
+                    <h1 style="margin:0;font-size:28px;font-weight:800;color:#f9fafb;letter-spacing:-0.5px;line-height:40px;">
+                      {logoSection}HotWater<span style="color:#EF4444;">Gas</span>
                     </h1>
                   </td>
                   <td align="right" style="vertical-align:middle;">
@@ -291,7 +339,7 @@ public class MailerSendEmailService : IEmailService
                 <tr>
                   <td width="50%">
                     <p style="margin:0 0 4px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.8px;">Trạng thái thanh toán</p>
-                    <p style="margin:0;font-size:14px;color:#16a34a;font-weight:600;">{r.PaymentStatus}</p>
+                    <p style="margin:0;font-size:14px;color:#16a34a;font-weight:600;">{localizedStatus}</p>
                   </td>
                   <td width="50%" align="right">
                     <p style="margin:0 0 4px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.8px;">Tổng cộng</p>

@@ -35,6 +35,7 @@ public static class DependencyInjection
     {
         services.Configure<AuthTokenOptions>(configuration.GetSection(AuthTokenOptions.SectionName));
         services.Configure<JwtTokenOptions>(configuration.GetSection(JwtTokenOptions.SectionName));
+        services.Configure<FrontendOptions>(configuration.GetSection(FrontendOptions.SectionName));
         return services;
     }
 }

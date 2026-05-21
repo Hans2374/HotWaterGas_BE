@@ -2,6 +2,8 @@ namespace Services.DTOs;
 
 public class FulfillmentEmailRequest
 {
+    public const string SectionName = "Frontend";
+
     public string ToEmail { get; set; } = string.Empty;
     public string ToName { get; set; } = string.Empty;
     public string OrderCode { get; set; } = string.Empty;
@@ -10,6 +12,7 @@ public class FulfillmentEmailRequest
     public decimal DiscountAmount { get; set; }
     public decimal FinalTotal { get; set; }
     public string PaymentStatus { get; set; } = string.Empty;
+    public string? LogoUrl { get; set; }
     public List<FulfillmentOrderItem> Items { get; set; } = new();
 
     public FulfillmentEmailRequest WithResolvedItems(List<FulfillmentOrderItem> items)
@@ -23,6 +26,7 @@ public class FulfillmentEmailRequest
             DiscountAmount = DiscountAmount,
             FinalTotal = FinalTotal,
             PaymentStatus = PaymentStatus,
+            LogoUrl = LogoUrl,
             Items = items
         };
 }

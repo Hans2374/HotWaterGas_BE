@@ -898,6 +898,11 @@ public class CheckoutService : ICheckoutService
             };
         }).ToList();
 
+        var frontendBaseUrl = _configuration["Frontend:BaseUrl"] ?? string.Empty;
+        var logoUrl = !string.IsNullOrWhiteSpace(frontendBaseUrl)
+            ? $"{frontendBaseUrl.TrimEnd('/')}/icon.png"
+            : string.Empty;
+
         var request = new FulfillmentEmailRequest
         {
             ToEmail = toEmail,
@@ -908,6 +913,7 @@ public class CheckoutService : ICheckoutService
             DiscountAmount = order.DiscountAmount,
             FinalTotal = order.FinalTotal,
             PaymentStatus = "PAID",
+            LogoUrl = logoUrl,
             Items = items
         };
 
