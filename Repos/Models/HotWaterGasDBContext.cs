@@ -333,9 +333,11 @@ public partial class HotWaterGasDBContext : DbContext
 
             entity.HasIndex(e => e.RoleId, "IX_Users_RoleId");
 
+            entity.HasIndex(e => e.GoogleId, "IX_Users_GoogleId");
+
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Email).IsRequired();
-            entity.Property(e => e.PasswordHash).IsRequired();
+            entity.Property(e => e.PasswordHash).IsRequired(false);
             entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(100);
 
             entity.HasOne(d => d.Role).WithMany(p => p.Users)

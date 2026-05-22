@@ -57,3 +57,12 @@ public class UserProfileResponse
     public bool IsEmailVerified { get; set; }
     public string? AccessToken { get; set; }
 }
+
+public class GoogleAuthResponse
+{
+    public string AccessToken { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public AuthUserResponse User { get; set; } = new();
+    public DateTime AccessTokenExpiresAt { get; set; }
+    public bool IsNewUser { get; set; }
+}

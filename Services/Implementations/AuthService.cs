@@ -140,6 +140,113 @@ public class AuthService : IAuthService
         };
     }
 
+    public async Task<GoogleAuthResponse> GoogleAuthAsync(
+        string googleId,
+        string email,
+        string displayName,
+        string? avatarUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedEmail = NormalizeEmail(email);
+
+        // Try to find existing user by Google ID first
+        var user = await _userRepository.GetUserByGoogleIdAsync(googleId, cancellationToken);
+
+        bool isNewUser = false;
+
+        // If not found by Google ID, try to find by email and link the account
+        if (user is null)
+        {
+            user = await _userRepository.GetUserByEmailAsync(normalizedEmail, cancellationToken);
+
+            if (user is not null)
+            {
+                // Link existing account to Google
+                user.GoogleId = googleId;
+                if (!string.IsNullOrEmpty(avatarUrl) && string.IsNullOrEmpty(user.AvatarUrl))
+                {
+                    user.AvatarUrl = avatarUrl;
+                }
+                _userRepository.UpdateUser(user);
+                await _userRepository.SaveChangesAsync(cancellationToken);
+
+                _logger.LogInformation(
+                    "[Auth.Google] Linked existing account GoogleId={GoogleId} Email={Email} UserId={UserId}",
+                    googleId, normalizedEmail, user.Id);
+            }
+            else
+            {
+                // Create new user
+                var customerRole = await _userRepository.GetRoleByNameAsync("Customer", cancellationToken);
+                if (customerRole is null)
+                {
+                    customerRole = await _userRepository.GetRoleByNameAsync("User", cancellationToken);
+                }
+
+                if (customerRole is null)
+                {
+                    customerRole = new Roles
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = "Customer"
+                    };
+
+                    await _userRepository.AddRoleAsync(customerRole, cancellationToken);
+                    await _userRepository.SaveChangesAsync(cancellationToken);
+                    _logger.LogWarning(
+                        "[Auth.Google] Missing role configuration. Auto-created role {RoleName} with Id={RoleId}",
+                        customerRole.Name, customerRole.Id);
+                }
+
+                user = new Users
+                {
+                    Id = Guid.NewGuid(),
+                    Email = normalizedEmail,
+                    PasswordHash = null, // Google users don't need password
+                    GoogleId = googleId,
+                    AvatarUrl = avatarUrl,
+                    CreatedAt = DateTime.UtcNow,
+                    RoleId = customerRole.Id,
+                    IsEmailVerified = true, // Google already verified the email
+                    DisplayName = !string.IsNullOrWhiteSpace(displayName) ? displayName.Trim() : normalizedEmail.Split('@')[0]
+                };
+
+                await _userRepository.AddUserAsync(user, cancellationToken);
+                await _userRepository.SaveChangesAsync(cancellationToken);
+
+                isNewUser = true;
+
+                _logger.LogInformation(
+                    "[Auth.Google] Created new user GoogleId={GoogleId} Email={Email} UserId={UserId}",
+                    googleId, normalizedEmail, user.Id);
+            }
+        }
+        else
+        {
+            _logger.LogInformation(
+                "[Auth.Google] Logged in existing user GoogleId={GoogleId} Email={Email} UserId={UserId}",
+                googleId, normalizedEmail, user.Id);
+        }
+
+        var roleName = user.Role?.Name ?? "Customer";
+        var token = _jwtTokenService.GenerateToken(user, roleName);
+
+        return new GoogleAuthResponse
+        {
+            AccessToken = token,
+            Role = roleName,
+            User = new AuthUserResponse
+            {
+                Id = user.Id,
+                Email = user.Email,
+                DisplayName = user.DisplayName,
+                Role = roleName
+            },
+            AccessTokenExpiresAt = _jwtTokenService.GetAccessTokenExpiry(),
+            IsNewUser = isNewUser
+        };
+    }
+
     public string GenerateAccessTokenForRefresh(Repos.Models.Users user)
     {
         var roleName = user.Role?.Name ?? "Customer";

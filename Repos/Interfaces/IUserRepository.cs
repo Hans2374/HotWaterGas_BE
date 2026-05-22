@@ -7,6 +7,7 @@ public interface IUserRepository
 {
     Task<Users?> GetUserByEmailAsync(string normalizedEmail, CancellationToken cancellationToken = default);
     Task<Users?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<Users?> GetUserByGoogleIdAsync(string googleId, CancellationToken cancellationToken = default);
     Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken = default);
     Task<Roles?> GetRoleByNameAsync(string roleName, CancellationToken cancellationToken = default);
     Task AddRoleAsync(Roles role, CancellationToken cancellationToken = default);

@@ -28,6 +28,13 @@ public class UserRepository : IUserRepository
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
     }
 
+    public Task<Users?> GetUserByGoogleIdAsync(string googleId, CancellationToken cancellationToken = default)
+    {
+        return _dbContext.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.GoogleId == googleId, cancellationToken);
+    }
+
     public Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken = default)
     {
         return _dbContext.Users.AnyAsync(u => u.Email == normalizedEmail, cancellationToken);

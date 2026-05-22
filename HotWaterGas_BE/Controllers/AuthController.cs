@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Mvc;
 using Services.DTOs;
 using Services.Interfaces;
@@ -11,15 +14,18 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly IRefreshTokenService _refreshTokenService;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IConfiguration _configuration;
 
     public AuthController(
         IAuthService authService,
         IRefreshTokenService refreshTokenService,
-        IJwtTokenService jwtTokenService)
+        IJwtTokenService jwtTokenService,
+        IConfiguration configuration)
     {
         _authService = authService;
         _refreshTokenService = refreshTokenService;
         _jwtTokenService = jwtTokenService;
+        _configuration = configuration;
     }
 
     [HttpPost("register")]
@@ -52,6 +58,114 @@ public class AuthController : ControllerBase
         };
 
         return Ok(response);
+    }
+
+    [HttpGet("google/login")]
+    public IActionResult GoogleLogin()
+    {
+        var googleClientId = _configuration["Authentication:Google:ClientId"];
+
+        if (string.IsNullOrEmpty(googleClientId))
+        {
+            _logger.LogWarning("[Auth.Google] Google OAuth not configured - ClientId is missing");
+            return BadRequest(new AuthErrorResponse
+            {
+                Message = "Google authentication is not configured.",
+                Code = "GOOGLE_NOT_CONFIGURED"
+            });
+        }
+
+        var callbackUrl = Url.Action(nameof(GoogleCallback), "Auth", null, Request.Scheme);
+        _logger.LogInformation(
+            "[Auth.Google] Initiating Google OAuth flow - CallbackUrl={CallbackUrl} RequestScheme={Scheme}",
+            callbackUrl, Request.Scheme);
+
+        var properties = new AuthenticationProperties
+        {
+            RedirectUri = callbackUrl
+        };
+
+        // Challenge with explicit Google scheme
+        return Challenge(properties, GoogleDefaults.AuthenticationScheme);
+    }
+
+    [HttpGet("google/callback")]
+    public async Task<IActionResult> GoogleCallback(CancellationToken cancellationToken)
+    {
+        var authenticateResult = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
+
+        if (!authenticateResult.Succeeded)
+        {
+            _logger.LogWarning(
+                "[Auth.Google.Callback] Authentication failed: {Failure}",
+                authenticateResult.Failure?.Message);
+
+            var errorUrl = _configuration["Frontend:GoogleAuthErrorUrl"]
+                ?? _configuration["Frontend:BaseUrl"]
+                ?? "http://localhost:5173";
+
+            return Redirect($"{errorUrl}?error=google_auth_failed");
+        }
+
+        // Extract Google claims from the authentication properties
+        var googleId = authenticateResult.Properties?.GetString("google_id") ?? string.Empty;
+        var email = authenticateResult.Properties?.GetString("google_email") ?? string.Empty;
+        var displayName = authenticateResult.Properties?.GetString("google_name") ?? string.Empty;
+        var avatarUrl = authenticateResult.Properties?.GetString("google_avatar");
+
+        if (string.IsNullOrEmpty(googleId) || string.IsNullOrEmpty(email))
+        {
+            _logger.LogWarning("[Auth.Google.Callback] Missing required Google claims - googleId={GoogleId}, email={Email}", googleId, email);
+
+            var errorUrl = _configuration["Frontend:GoogleAuthErrorUrl"]
+                ?? _configuration["Frontend:BaseUrl"]
+                ?? "http://localhost:5173";
+
+            return Redirect($"{errorUrl}?error=missing_google_claims");
+        }
+
+        try
+        {
+            // Process the Google authentication
+            var response = await _authService.GoogleAuthAsync(googleId, email, displayName, avatarUrl, cancellationToken);
+
+            // Sign out of the external cookie (cleanup temporary OAuth state)
+            // This is required after AddGoogle authentication to clear the temporary cookie
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+            // Generate refresh token
+            var (refreshToken, _, expiresAtUtc) = await _refreshTokenService.GenerateRefreshTokenAsync(
+                response.User.Id,
+                GetClientIp(),
+                GetUserAgent(),
+                GetDeviceInfo(),
+                cancellationToken: cancellationToken);
+
+            _refreshTokenService.SetRefreshCookie(HttpContext, refreshToken, expiresAtUtc);
+
+            // Redirect to frontend with tokens
+            var successUrl = _configuration["Frontend:GoogleAuthSuccessUrl"]
+                ?? _configuration["Frontend:BaseUrl"]
+                ?? "http://localhost:5173";
+
+            var redirectUrl = $"{successUrl}?token={Uri.EscapeDataString(response.AccessToken)}&expiresAt={Uri.EscapeDataString(response.AccessTokenExpiresAt.ToString("O"))}&role={Uri.EscapeDataString(response.Role)}&isNewUser={response.IsNewUser}";
+
+            _logger.LogInformation(
+                "[Auth.Google.Callback] Success UserId={UserId} Email={Email} IsNewUser={IsNewUser}",
+                response.User.Id, email, response.IsNewUser);
+
+            return Redirect(redirectUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Auth.Google.Callback] Error processing Google auth for email={Email}", email);
+
+            var errorUrl = _configuration["Frontend:GoogleAuthErrorUrl"]
+                ?? _configuration["Frontend:BaseUrl"]
+                ?? "http://localhost:5173";
+
+            return Redirect($"{errorUrl}?error=auth_processing_failed");
+        }
     }
 
     [HttpPost("refresh")]

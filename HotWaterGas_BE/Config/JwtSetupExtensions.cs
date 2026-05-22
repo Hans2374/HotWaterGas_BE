@@ -1,5 +1,9 @@
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Services.DTOs;
@@ -18,11 +22,35 @@ public static class JwtSetupExtensions
             throw new InvalidOperationException("Jwt:Key is not configured.");
         }
 
-        services
+        var googleClientId = configuration["Authentication:Google:ClientId"];
+        var googleEnabled = !string.IsNullOrEmpty(googleClientId);
+
+        // Build the authentication builder - this must only be called once
+        var authBuilder = services
             .AddAuthentication(options =>
             {
+                // JWT is primary for API authentication/authorization
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                // DefaultChallengeScheme must be compatible with the schemes we use
+                // For Google OAuth, we explicitly specify the scheme in Challenge() call
+            })
+            .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
+            {
+                // Minimal cookie for OAuth handshake only - never used for permanent auth
+                options.Cookie.Name = "ExternalAuth";
+                options.Cookie.HttpOnly = true;
+                // Required for cross-origin OAuth flows (frontend on 5173, backend on 7140)
+                // Secure=Always is required because SameSite=None requires Secure flag
+                options.Cookie.SameSite = SameSiteMode.None;
+                options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+                // Short expiration - just enough for the OAuth round-trip
+                options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
+                // Sliding expiration not needed for short-lived OAuth cookie
+                options.SlidingExpiration = false;
+                // Don't redirect to login page - let the callback handle errors
+                options.LoginPath = "/api/auth/google/error";
+                options.AccessDeniedPath = "/api/auth/google/error";
             })
             .AddJwtBearer(options =>
             {
@@ -187,6 +215,98 @@ public static class JwtSetupExtensions
                     }
                 };
             });
+
+        // Add Google authentication if configured
+        if (googleEnabled)
+        {
+            authBuilder.AddGoogle(options =>
+                {
+                    options.ClientId = googleClientId!;
+                    options.ClientSecret = configuration["Authentication:Google:ClientSecret"] ?? string.Empty;
+                    options.CallbackPath = "/api/auth/google/callback";
+                    options.SaveTokens = false;
+
+                    // Configure correlation cookie for cross-origin OAuth (frontend/backend on different ports)
+                    // Secure=Always is required because SameSite=None requires Secure flag
+                    options.CorrelationCookie.Name = "GoogleOAuth.Correlation";
+                    options.CorrelationCookie.SameSite = SameSiteMode.None;
+                    options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+                    options.CorrelationCookie.HttpOnly = true;
+
+                    options.Events.OnRedirectToAuthorizationEndpoint = context =>
+                    {
+                        var logger = context.HttpContext.RequestServices
+                            .GetRequiredService<ILogger<JwtBearerEvents>>();
+
+                        logger.LogInformation(
+                            "[Google.OAuth] Redirecting to Google - Url={Url} Scheme={Scheme} Host={Host}",
+                            context.RedirectUri, context.Request.Scheme, context.Request.Host);
+
+                        return Task.CompletedTask;
+                    };
+                    options.Events.OnCreatingTicket = context =>
+                    {
+                        var logger = context.HttpContext.RequestServices
+                            .GetRequiredService<ILogger<JwtBearerEvents>>();
+
+                        // Map Google claims to our standard claims
+                        var googleId = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+                            ?? context.Principal?.FindFirstValue("sub");
+                        var email = context.Principal?.FindFirstValue(ClaimTypes.Email)
+                            ?? context.Principal?.FindFirstValue("email");
+                        var displayName = context.Principal?.FindFirstValue(ClaimTypes.Name)
+                            ?? context.Principal?.FindFirstValue("name");
+                        var avatarUrl = context.Principal?.FindFirstValue("picture");
+
+                        // Store extracted values in tokens for the callback to access
+                        context.Properties.SetString("google_id", googleId ?? string.Empty);
+                        context.Properties.SetString("google_email", email ?? string.Empty);
+                        context.Properties.SetString("google_name", displayName ?? string.Empty);
+                        context.Properties.SetString("google_avatar", avatarUrl ?? string.Empty);
+
+                        logger.LogInformation(
+                            "[Google.OAuth] Ticket created - GoogleId={GoogleId} Email={Email}",
+                            googleId, email);
+
+                        return Task.CompletedTask;
+                    };
+                    options.Events.OnRemoteFailure = context =>
+                    {
+                        var logger = context.HttpContext.RequestServices
+                            .GetRequiredService<ILogger<JwtBearerEvents>>();
+
+                        logger.LogWarning(
+                            "[Google.OAuth] Remote failure - Error={Error}",
+                            context.Failure?.Message ?? "Unknown");
+
+                        context.HandleResponse();
+
+                        // Redirect to frontend error page
+                        var frontendUrl = configuration["Frontend:GoogleAuthErrorUrl"]
+                            ?? "http://localhost:5173/auth/google/error";
+
+                        context.Response.Redirect($"{frontendUrl}?error={Uri.EscapeDataString(context.Failure?.Message ?? "oauth_failed")}");
+
+                        return Task.CompletedTask;
+                    };
+                    options.Events.OnAccessDenied = context =>
+                    {
+                        var logger = context.HttpContext.RequestServices
+                            .GetRequiredService<ILogger<JwtBearerEvents>>();
+
+                        logger.LogWarning("[Google.OAuth] Access denied");
+
+                        context.HandleResponse();
+
+                        var frontendUrl = configuration["Frontend:GoogleAuthErrorUrl"]
+                            ?? "http://localhost:5173/auth/google/error";
+
+                        context.Response.Redirect($"{frontendUrl}?error=access_denied");
+
+                        return Task.CompletedTask;
+                    };
+                });
+        }
 
         services.AddAuthorization();
 

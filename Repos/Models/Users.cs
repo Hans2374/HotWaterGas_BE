@@ -11,7 +11,7 @@ public partial class Users
 
     public string Email { get; set; }
 
-    public string PasswordHash { get; set; }
+    public string? PasswordHash { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
@@ -20,6 +20,10 @@ public partial class Users
     public bool IsEmailVerified { get; set; }
 
     public string DisplayName { get; set; } = string.Empty;
+
+    public string? GoogleId { get; set; }
+
+    public string? AvatarUrl { get; set; }
 
     public virtual Carts Carts { get; set; }
 
