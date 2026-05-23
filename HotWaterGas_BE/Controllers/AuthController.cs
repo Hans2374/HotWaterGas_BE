@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
@@ -67,7 +68,7 @@ public class AuthController : ControllerBase
 
         if (string.IsNullOrEmpty(googleClientId))
         {
-            _logger.LogWarning("[Auth.Google] Google OAuth not configured - ClientId is missing");
+            _logger.LogWarning("[Auth.Google] Google OAuth not configured");
             return BadRequest(new AuthErrorResponse
             {
                 Message = "Google authentication is not configured.",
@@ -75,24 +76,52 @@ public class AuthController : ControllerBase
             });
         }
 
-        var callbackUrl = Url.Action(nameof(GoogleCallback), "Auth", null, Request.Scheme);
-        _logger.LogInformation(
-            "[Auth.Google] Initiating Google OAuth flow - CallbackUrl={CallbackUrl} RequestScheme={Scheme}",
-            callbackUrl, Request.Scheme);
+        // CRITICAL: RedirectUri MUST be the backend callback endpoint, NOT the frontend URL.
+        // After Google middleware processes the OAuth callback at /signin-google,
+        // it will redirect to this RedirectUri (the MVC callback route).
+        // The MVC callback then generates JWT and redirects to frontend.
+        var callbackUrl = Url.Action(
+            nameof(GoogleCallback),
+            "Auth",
+            null,
+            Request.Scheme);
+
+        _logger.LogInformation("[Auth.Google.Login] RedirectUri={RedirectUri}", callbackUrl);
 
         var properties = new AuthenticationProperties
         {
             RedirectUri = callbackUrl
         };
 
-        // Challenge with explicit Google scheme
         return Challenge(properties, GoogleDefaults.AuthenticationScheme);
     }
 
     [HttpGet("google/callback")]
     public async Task<IActionResult> GoogleCallback(CancellationToken cancellationToken)
     {
-        var authenticateResult = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
+        _logger.LogInformation("[Auth.Google.Callback] === CALLBACK CONTROLLER REACHED ===");
+
+        // IMPORTANT: Middleware has already authenticated the external user at /signin-google
+        // and signed them in using the cookie scheme. We read from cookies here.
+        _logger.LogInformation("[Auth.Google.Callback] Calling AuthenticateAsync with scheme: {Scheme}", CookieAuthenticationDefaults.AuthenticationScheme);
+        var authenticateResult = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+        _logger.LogInformation(
+            "[Auth.Google.Callback] AuthenticateAsync result: Succeeded={Succeeded} None={None} Failure={Failure}",
+            authenticateResult.Succeeded,
+            authenticateResult.None,
+            authenticateResult.Failure?.Message);
+
+        if (authenticateResult.Principal != null)
+        {
+            var claims = authenticateResult.Principal.Claims.Select(c => $"{c.Type}={c.Value}").ToList();
+            _logger.LogInformation("[Auth.Google.Callback] Principal claims ({Count}): {Claims}",
+                claims.Count, string.Join(", ", claims.Take(10)));
+        }
+        else
+        {
+            _logger.LogWarning("[Auth.Google.Callback] Principal is NULL");
+        }
 
         if (!authenticateResult.Succeeded)
         {
@@ -107,11 +136,25 @@ public class AuthController : ControllerBase
             return Redirect($"{errorUrl}?error=google_auth_failed");
         }
 
-        // Extract Google claims from the authentication properties
-        var googleId = authenticateResult.Properties?.GetString("google_id") ?? string.Empty;
-        var email = authenticateResult.Properties?.GetString("google_email") ?? string.Empty;
-        var displayName = authenticateResult.Properties?.GetString("google_name") ?? string.Empty;
-        var avatarUrl = authenticateResult.Properties?.GetString("google_avatar");
+        // Extract Google claims from the principal (set by middleware after Google auth)
+        var googleId = authenticateResult.Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? authenticateResult.Principal?.FindFirstValue("sub")
+            ?? authenticateResult.Principal?.FindFirstValue("http://schemas.google.com/claims/googleid")
+            ?? string.Empty;
+        var email = authenticateResult.Principal?.FindFirstValue(ClaimTypes.Email)
+            ?? authenticateResult.Principal?.FindFirstValue("email")
+            ?? authenticateResult.Principal?.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress")
+            ?? string.Empty;
+        var displayName = authenticateResult.Principal?.FindFirstValue(ClaimTypes.Name)
+            ?? authenticateResult.Principal?.FindFirstValue("name")
+            ?? authenticateResult.Principal?.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")
+            ?? string.Empty;
+        var avatarUrl = authenticateResult.Principal?.FindFirstValue("picture")
+            ?? authenticateResult.Principal?.FindFirstValue("http://schemas.google.com/claims/photo");
+
+        _logger.LogInformation(
+            "[Auth.Google.Callback] Extracted claims - googleId={GoogleId}, email={Email}, displayName={DisplayName}",
+            googleId, email, displayName);
 
         if (string.IsNullOrEmpty(googleId) || string.IsNullOrEmpty(email))
         {
@@ -126,14 +169,21 @@ public class AuthController : ControllerBase
 
         try
         {
-            // Process the Google authentication
+            _logger.LogInformation("[Auth.Google.Callback] Calling GoogleAuthAsync service...");
+
+            // Process the Google authentication (creates/updates user)
             var response = await _authService.GoogleAuthAsync(googleId, email, displayName, avatarUrl, cancellationToken);
 
+            _logger.LogInformation(
+                "[Auth.Google.Callback] GoogleAuthAsync completed - UserId={UserId} Role={Role} IsNewUser={IsNewUser} TokenLength={TokenLength}",
+                response.User.Id, response.Role, response.IsNewUser, response.AccessToken?.Length ?? 0);
+
             // Sign out of the external cookie (cleanup temporary OAuth state)
-            // This is required after AddGoogle authentication to clear the temporary cookie
+            _logger.LogInformation("[Auth.Google.Callback] Signing out of external cookie...");
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
             // Generate refresh token
+            _logger.LogInformation("[Auth.Google.Callback] Generating refresh token...");
             var (refreshToken, _, expiresAtUtc) = await _refreshTokenService.GenerateRefreshTokenAsync(
                 response.User.Id,
                 GetClientIp(),
@@ -143,16 +193,27 @@ public class AuthController : ControllerBase
 
             _refreshTokenService.SetRefreshCookie(HttpContext, refreshToken, expiresAtUtc);
 
-            // Redirect to frontend with tokens
+            // Redirect to frontend success page with auth data
             var successUrl = _configuration["Frontend:GoogleAuthSuccessUrl"]
                 ?? _configuration["Frontend:BaseUrl"]
                 ?? "http://localhost:5173";
 
-            var redirectUrl = $"{successUrl}?token={Uri.EscapeDataString(response.AccessToken)}&expiresAt={Uri.EscapeDataString(response.AccessTokenExpiresAt.ToString("O"))}&role={Uri.EscapeDataString(response.Role)}&isNewUser={response.IsNewUser}";
+            // Ensure we have valid values
+            var token = response.AccessToken ?? string.Empty;
+            var role = response.Role ?? "Customer";
+            var expiresAt = response.AccessTokenExpiresAt.ToString("O");
+            var isNewUser = response.IsNewUser.ToString().ToLowerInvariant();
 
-            _logger.LogInformation(
-                "[Auth.Google.Callback] Success UserId={UserId} Email={Email} IsNewUser={IsNewUser}",
-                response.User.Id, email, response.IsNewUser);
+            if (string.IsNullOrEmpty(token))
+            {
+                _logger.LogError("[Auth.Google.Callback] AccessToken is null or empty!");
+                throw new InvalidOperationException("Failed to generate access token");
+            }
+
+            var redirectUrl = $"{successUrl}?token={Uri.EscapeDataString(token)}&expiresAt={Uri.EscapeDataString(expiresAt)}&role={Uri.EscapeDataString(role)}&isNewUser={isNewUser}";
+
+            _logger.LogInformation("[Auth.Google.Callback] === REDIRECTING TO FRONTEND ===");
+            _logger.LogInformation("[Auth.Google.Callback] RedirectUrl: {RedirectUrl}", redirectUrl);
 
             return Redirect(redirectUrl);
         }

@@ -1,5 +1,7 @@
 using HotWaterGas_BE.Config;
 using HotWaterGas_BE.Middleware;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
@@ -11,6 +13,27 @@ using Services.Implementations;
 using Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ── Kestrel HTTPS Configuration ─────────────────────────────────────────────────
+// Explicitly configure Kestrel for HTTPS localhost
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenLocalhost(7140, listenOptions =>
+    {
+        listenOptions.UseHttps();
+    });
+});
+
+// ── Forwarded Headers Configuration ─────────────────────────────────────────────
+// MUST be first to handle scheme/host normalization before any middleware runs
+// Critical for OAuth callback when behind proxies or different ports
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Only trust localhost proxy (Kestrel/VS)
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // ── Configuration Loading ───────────────────────────────────────────────────────
 // ASP.NET Core Configuration reads environment variables natively.
@@ -48,7 +71,7 @@ builder.Services.AddDbContext<HotWaterGasDBContext>(options =>
 // ── CORS Configuration ──────────────────────────────────────────────────────────
 // Get allowed origins from configuration (supports environment variables)
 var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>()
-    ?? new[] { "https://localhost:5173", "https://localhost:7140", "https://hot-water-gas-fe.vercel.app" };
+    ?? new[] { "http://localhost:5173", "https://localhost:7140", "https://hot-water-gas-fe.vercel.app" };
 
 builder.Services.AddCors(options =>
 {
@@ -63,6 +86,16 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddHttpContextAccessor();
+
+// ── DataProtection Configuration ──────────────────────────────────────────────────
+// Required for OAuth correlation cookies to persist across app restarts
+// Without this, correlation cookies are invalidated on each restart, causing
+// "oauth state was missing or invalid" errors during OAuth flow
+var keysPath = Path.Combine(builder.Environment.ContentRootPath, "DataProtectionKeys");
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+    .SetApplicationName("HotWaterGas");
+
 builder.Services.AddRepos();
 builder.Services.AddServs();
 builder.Services.AddAuthOptions(builder.Configuration);
@@ -169,31 +202,41 @@ if (builder.Environment.IsDevelopment())
 // ── Build app (freezes service collection) ─────────────────────────────────────
 var app = builder.Build();
 
-// Post-build logging — service provider is now available via app.Services
-if (!missingCloudinaryKeys.Any())
-{
-    var maskedKey = cloudinaryApiKey.Length > 4
-        ? $"{cloudinaryApiKey[..4]}***"
-        : "****";
-    app.Logger.LogInformation(
-        "[Cloudinary.Config] CloudName={CloudName} ApiKeyPrefix={ApiKeyPrefix}",
-        cloudinaryCloudName, maskedKey);
-}
-else
-{
-    app.Logger.LogWarning(
-        "[Cloudinary.Config] Missing keys: {MissingKeys}. Image upload will fail until credentials are set.",
-        string.Join(", ", missingCloudinaryKeys));
-}
-
-var maskedToken = mailerSendApiToken.Length <= 8
-    ? new string('*', mailerSendApiToken.Length)
-    : $"{mailerSendApiToken[..5]}***{mailerSendApiToken[^3..]}";
+// ── HTTPS Diagnostics ──────────────────────────────────────────────────────────
+var urls = builder.Configuration["ASPNETCORE_URLS"] ?? "https://localhost:7140";
 app.Logger.LogInformation(
-    "[MailerSend.Config] ApiTokenExists=true ApiTokenPreview={TokenPreview} FromEmail={FromEmail} FromName={FromName}",
-    maskedToken, mailerSendFromEmail, mailerSendFromName);
+    "[HTTPS] Backend configured for HTTPS: {Urls}", urls);
+app.Logger.LogInformation(
+    "[HTTPS] Environment: {Environment}", builder.Environment.EnvironmentName);
+app.Logger.LogInformation(
+    "[HTTPS] Backend URL: https://localhost:7140");
 
-// ── Swagger UI ─────────────────────────────────────────────────────────────────
+// ── Forwarded Headers (MUST be first) ─────────────────────────────────────────
+app.UseForwardedHeaders();
+
+// ── HTTPS Redirection ──────────────────────────────────────────────────────────
+var forceHttps = builder.Configuration.GetValue<bool>("ASPNETCORE_FORCE_HTTPS_REDIRECTION",
+    !builder.Environment.IsDevelopment());
+
+if (forceHttps)
+{
+    app.UseHttpsRedirection();
+}
+
+// ── CORS ───────────────────────────────────────────────────────────────────────
+app.UseCors("AllowFrontend");
+
+// ── Authentication & Authorization ──────────────────────────────────────────────
+app.UseAuthentication();
+app.UseAuthorization();
+
+// ── OAuth Correlation Diagnostics (temporary - for debugging only) ───────────────
+app.UseOAuthCorrelationDiagnostics();
+
+// ── Exception Handling (MUST be after auth pipeline) ───────────────────────────
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
+// ── Swagger UI (after all other middleware - route-based) ───────────────────────
 if (enableSwagger)
 {
     app.UseSwagger();
@@ -203,23 +246,6 @@ if (enableSwagger)
         options.RoutePrefix = "swagger";
     });
 }
-
-app.UseMiddleware<ExceptionHandlingMiddleware>();
-
-// CORS must be before UseHttpsRedirection for preflight requests to work
-app.UseCors("AllowFrontend");
-
-// ── HTTPS Redirection (configurable) ───────────────────────────────────────────
-var forceHttps = builder.Configuration.GetValue<bool>("ASPNETCORE_FORCE_HTTPS_REDIRECTION",
-    !builder.Environment.IsDevelopment());
-
-if (forceHttps)
-{
-    app.UseHttpsRedirection();
-}
-
-app.UseAuthentication();
-app.UseAuthorization();
 
 // ── Health Check Endpoint (for Docker/Render) ──────────────────────────────────
 app.MapGet("/health", () => Results.Ok(new
