@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IAdminProductService, AdminProductService>();
+        services.AddScoped<IAdminUserService, AdminUserService>();
         services.AddScoped<IAdminCategoryService, AdminCategoryService>();
         services.AddScoped<IAdminTagService, AdminTagService>();
         services.AddScoped<IAdminRoleService, AdminRoleService>();

@@ -25,6 +25,8 @@ public partial class Users
 
     public string? AvatarUrl { get; set; }
 
+    public bool IsSuspended { get; set; } = false;
+
     public virtual Carts Carts { get; set; }
 
     public virtual EmailVerifications EmailVerifications { get; set; }
