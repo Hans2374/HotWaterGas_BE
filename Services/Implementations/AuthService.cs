@@ -115,9 +115,22 @@ public class AuthService : IAuthService
         var normalizedEmail = NormalizeEmail(request.Email);
         var user = await _userRepository.GetUserByEmailAsync(normalizedEmail, cancellationToken);
 
-        if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        if (user is null)
         {
-            _logger.LogWarning("[Auth.Login] Failed attempt for email={Email}", normalizedEmail);
+            _logger.LogWarning("[Auth.Login] User not found email={Email}", normalizedEmail);
+            throw new ApiException(400, "Email hoặc mật khẩu không đúng.");
+        }
+
+        // Google OAuth users have no local password - reject safely
+        if (string.IsNullOrWhiteSpace(user.PasswordHash))
+        {
+            _logger.LogWarning("[Auth.Login] Google OAuth account login attempt email={Email}", normalizedEmail);
+            throw new ApiException(400, "Tài khoản này được đăng ký bằng Google. Hãy đăng nhập bằng Google");
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        {
+            _logger.LogWarning("[Auth.Login] Invalid password for email={Email}", normalizedEmail);
             throw new ApiException(400, "Email hoặc mật khẩu không đúng.");
         }
 
