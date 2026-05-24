@@ -43,6 +43,22 @@ public class AdminUsersController : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetUserDetail(
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _adminUserService.GetUserDetailAsync(id, cancellationToken);
+            return Ok(response);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "User not found." });
+        }
+    }
+
     [HttpPatch("{id:guid}/suspension")]
     public async Task<IActionResult> ToggleSuspension(
         [FromRoute] Guid id,

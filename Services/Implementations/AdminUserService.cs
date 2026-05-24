@@ -116,4 +116,76 @@ public class AdminUserService : IAdminUserService
         user.IsSuspended = !user.IsSuspended;
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<AdminUserDetailDto> GetUserDetailAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var user = await _dbContext.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .Include(u => u.RefreshTokens)
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+        if (user is null)
+        {
+            throw new KeyNotFoundException("User not found.");
+        }
+
+        // Get last login from refresh tokens
+        var lastLoginAt = _dbContext.RefreshTokens
+            .Where(rt => rt.UserId == userId)
+            .OrderByDescending(rt => rt.CreatedAtUtc)
+            .Select(rt => (DateTime?)rt.CreatedAtUtc)
+            .FirstOrDefault();
+
+        // Get order stats (exclude cancelled orders - Status 3)
+        var ordersQuery = _dbContext.Orders
+            .Where(o => o.UserId == userId && o.Status != 3);
+
+        var ordersCount = await ordersQuery.CountAsync(cancellationToken);
+        var totalSpent = await ordersQuery.SumAsync(o => o.FinalTotal, cancellationToken);
+
+        // Get recent 5 orders
+        var recentOrders = await ordersQuery
+            .OrderByDescending(o => o.CreatedAt)
+            .Take(5)
+            .Select(o => new AdminUserRecentOrderDto
+            {
+                OrderId = o.Id,
+                Status = o.Status.ToString(),
+                TotalAmount = o.FinalTotal,
+                CreatedAt = o.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        // Map order status to readable string
+        var statusMap = new Dictionary<string, string>
+        {
+            { "0", "Pending" },
+            { "1", "Confirmed" },
+            { "2", "Completed" },
+            { "3", "Cancelled" },
+            { "4", "Refunded" }
+        };
+
+        foreach (var order in recentOrders)
+        {
+            order.Status = statusMap.GetValueOrDefault(order.Status, order.Status);
+        }
+
+        return new AdminUserDetailDto
+        {
+            Id = user.Id,
+            DisplayName = user.DisplayName,
+            Email = user.Email,
+            Role = user.Role?.Name ?? "Customer",
+            Provider = !string.IsNullOrEmpty(user.GoogleId) ? "Google" : "Local",
+            IsSuspended = user.IsSuspended,
+            EmailConfirmed = user.IsEmailVerified,
+            CreatedAt = user.CreatedAt,
+            LastLoginAt = lastLoginAt,
+            OrdersCount = ordersCount,
+            TotalSpent = totalSpent,
+            RecentOrders = recentOrders
+        };
+    }
 }

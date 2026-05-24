@@ -157,7 +157,6 @@ public class AuthService : IAuthService
         string googleId,
         string email,
         string displayName,
-        string? avatarUrl,
         CancellationToken cancellationToken = default)
     {
         var normalizedEmail = NormalizeEmail(email);
@@ -176,10 +175,6 @@ public class AuthService : IAuthService
             {
                 // Link existing account to Google
                 user.GoogleId = googleId;
-                if (!string.IsNullOrEmpty(avatarUrl) && string.IsNullOrEmpty(user.AvatarUrl))
-                {
-                    user.AvatarUrl = avatarUrl;
-                }
                 _userRepository.UpdateUser(user);
                 await _userRepository.SaveChangesAsync(cancellationToken);
 
@@ -217,7 +212,6 @@ public class AuthService : IAuthService
                     Email = normalizedEmail,
                     PasswordHash = null, // Google users don't need password
                     GoogleId = googleId,
-                    AvatarUrl = avatarUrl,
                     CreatedAt = DateTime.UtcNow,
                     RoleId = customerRole.Id,
                     IsEmailVerified = true, // Google already verified the email

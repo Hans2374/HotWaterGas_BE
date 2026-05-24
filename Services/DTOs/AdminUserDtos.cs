@@ -31,3 +31,27 @@ public class PagedAdminUserListResponse
     public int TotalItems { get; set; }
     public int TotalPages { get; set; }
 }
+
+public class AdminUserDetailDto
+{
+    public Guid Id { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public string Provider { get; set; } = string.Empty;
+    public bool IsSuspended { get; set; }
+    public bool EmailConfirmed { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? LastLoginAt { get; set; }
+    public int OrdersCount { get; set; }
+    public decimal TotalSpent { get; set; }
+    public List<AdminUserRecentOrderDto> RecentOrders { get; set; } = new();
+}
+
+public class AdminUserRecentOrderDto
+{
+    public Guid OrderId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public decimal TotalAmount { get; set; }
+    public DateTime CreatedAt { get; set; }
+}

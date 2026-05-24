@@ -23,8 +23,6 @@ public partial class Users
 
     public string? GoogleId { get; set; }
 
-    public string? AvatarUrl { get; set; }
-
     public bool IsSuspended { get; set; } = false;
 
     public virtual Carts Carts { get; set; }

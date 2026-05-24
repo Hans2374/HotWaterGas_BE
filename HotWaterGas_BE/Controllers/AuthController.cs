@@ -149,8 +149,6 @@ public class AuthController : ControllerBase
             ?? authenticateResult.Principal?.FindFirstValue("name")
             ?? authenticateResult.Principal?.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")
             ?? string.Empty;
-        var avatarUrl = authenticateResult.Principal?.FindFirstValue("picture")
-            ?? authenticateResult.Principal?.FindFirstValue("http://schemas.google.com/claims/photo");
 
         _logger.LogInformation(
             "[Auth.Google.Callback] Extracted claims - googleId={GoogleId}, email={Email}, displayName={DisplayName}",
@@ -172,7 +170,7 @@ public class AuthController : ControllerBase
             _logger.LogInformation("[Auth.Google.Callback] Calling GoogleAuthAsync service...");
 
             // Process the Google authentication (creates/updates user)
-            var response = await _authService.GoogleAuthAsync(googleId, email, displayName, avatarUrl, cancellationToken);
+            var response = await _authService.GoogleAuthAsync(googleId, email, displayName, cancellationToken);
 
             _logger.LogInformation(
                 "[Auth.Google.Callback] GoogleAuthAsync completed - UserId={UserId} Role={Role} IsNewUser={IsNewUser} TokenLength={TokenLength}",

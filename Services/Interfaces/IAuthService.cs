@@ -6,7 +6,7 @@ public interface IAuthService
 {
     Task<MessageResponse> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default);
     Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
-    Task<GoogleAuthResponse> GoogleAuthAsync(string googleId, string email, string displayName, string? avatarUrl, CancellationToken cancellationToken = default);
+    Task<GoogleAuthResponse> GoogleAuthAsync(string googleId, string email, string displayName, CancellationToken cancellationToken = default);
     Task<MessageResponse> VerifyEmailAsync(VerifyEmailRequest request, CancellationToken cancellationToken = default);
     Task<MessageResponse> ResendVerificationAsync(ResendVerificationRequest request, CancellationToken cancellationToken = default);
     Task<MessageResponse> ForgotPasswordRequestAsync(ForgotPasswordRequest request, CancellationToken cancellationToken = default);
