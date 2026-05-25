@@ -65,6 +65,24 @@ public class AuthService : IAuthService
         }
 
         var verificationCode = GenerateSixDigitCode();
+
+        // Auto-generate DisplayName from email prefix if not provided.
+        // Apply same length constraints here (server-side, replacing DTO-level validation).
+        var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
+            ? normalizedEmail.Split('@')[0]
+            : request.DisplayName.Trim();
+
+        if (displayName.Length > 100)
+        {
+            displayName = displayName[..100];
+        }
+        // Ensure minimum length (pad with trailing digit if email prefix is too short,
+        // e.g. "a@b.com" → "a1" to satisfy the 2-char minimum).
+        if (displayName.Length < 2)
+        {
+            displayName = displayName + "1";
+        }
+
         var user = new Users
         {
             Id = Guid.NewGuid(),
@@ -73,7 +91,7 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow,
             RoleId = customerRole.Id,
             IsEmailVerified = false,
-            DisplayName = request.DisplayName.Trim()
+            DisplayName = displayName
         };
 
         var verification = new EmailVerifications
