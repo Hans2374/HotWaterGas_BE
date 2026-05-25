@@ -206,16 +206,13 @@ if (builder.Environment.IsDevelopment())
 var app = builder.Build();
 
 // ── Hosting Diagnostics ────────────────────────────────────────────────────────
-var configuredPort = builder.Environment.IsDevelopment()
-    ? "7140 (VS HTTPS)"
-    : (Environment.GetEnvironmentVariable("PORT") ?? "8080");
-app.Logger.LogInformation(
-    "[Hosting] Environment: {Environment}", builder.Environment.EnvironmentName);
-app.Logger.LogInformation(
-    "[Hosting] Listening on: http://0.0.0.0:{Port}", configuredPort);
-app.Logger.LogInformation(
-    "[Hosting] HTTPS handled by: {HttpsHandler}",
-    builder.Environment.IsDevelopment() ? "Visual Studio dev certificate" : "Platform/Load Balancer (Render)"));
+var isDev = builder.Environment.IsDevelopment();
+var listeningPort = isDev ? "7140 (VS HTTPS)" : (Environment.GetEnvironmentVariable("PORT") ?? "8080");
+var httpsHandler = isDev ? "Visual Studio dev certificate" : "Platform/Load Balancer (Render)";
+
+app.Logger.LogInformation("[Hosting] Environment: {Environment}", builder.Environment.EnvironmentName);
+app.Logger.LogInformation("[Hosting] Listening on: http://0.0.0.0:{Port}", listeningPort);
+app.Logger.LogInformation("[Hosting] HTTPS handled by: {HttpsHandler}", httpsHandler);
 
 // ── Forwarded Headers (MUST be first) ─────────────────────────────────────────
 app.UseForwardedHeaders();
