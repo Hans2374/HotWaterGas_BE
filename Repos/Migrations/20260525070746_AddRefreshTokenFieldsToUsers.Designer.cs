@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Repos.Models;
@@ -11,9 +12,11 @@ using Repos.Models;
 namespace Repos.Migrations
 {
     [DbContext(typeof(HotWaterGasDBContext))]
-    partial class HotWaterGasDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260525070746_AddRefreshTokenFieldsToUsers")]
+    partial class AddRefreshTokenFieldsToUsers
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

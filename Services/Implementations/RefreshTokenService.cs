@@ -37,9 +37,30 @@ public class RefreshTokenService : IRefreshTokenService
         Guid? tokenFamilyId = null,
         CancellationToken cancellationToken = default)
     {
+        return await GenerateRefreshTokenAsync(
+            userId,
+            createdByIp,
+            userAgent,
+            deviceInfo,
+            _authOptions.RefreshTokenExpiryDays,
+            parentTokenId,
+            tokenFamilyId,
+            cancellationToken);
+    }
+
+    public async Task<(string Token, string TokenHash, DateTime ExpiresAtUtc)> GenerateRefreshTokenAsync(
+        Guid userId,
+        string? createdByIp,
+        string? userAgent,
+        string? deviceInfo,
+        int expiryDays,
+        Guid? parentTokenId = null,
+        Guid? tokenFamilyId = null,
+        CancellationToken cancellationToken = default)
+    {
         var plainToken = GenerateSecureToken();
         var tokenHash = await HashTokenAsync(plainToken);
-        var expiresAtUtc = DateTime.UtcNow.AddDays(_authOptions.RefreshTokenExpiryDays);
+        var expiresAtUtc = DateTime.UtcNow.AddDays(expiryDays);
 
         var refreshToken = new RefreshTokens
         {
@@ -60,8 +81,8 @@ public class RefreshTokenService : IRefreshTokenService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "[RefreshToken.Issued] UserId={UserId} TokenFamilyId={TokenFamilyId} ExpiresAtUtc={ExpiresAtUtc}",
-            userId, refreshToken.TokenFamilyId, expiresAtUtc);
+            "[RefreshToken.Issued] UserId={UserId} TokenFamilyId={TokenFamilyId} ExpiresAtUtc={ExpiresAtUtc} ExpiryDays={ExpiryDays}",
+            userId, refreshToken.TokenFamilyId, expiresAtUtc, expiryDays);
 
         return (plainToken, tokenHash, expiresAtUtc);
     }
@@ -223,6 +244,36 @@ public class RefreshTokenService : IRefreshTokenService
             Secure = isSecure,
             SameSite = sameSite,
             Expires = expiresAtUtc,
+            Path = "/",
+            IsEssential = true
+        };
+
+        httpContext.Response.Cookies.Append(_authOptions.RefreshCookieName, token, cookieOptions);
+    }
+
+    public void SetSessionCookie(HttpContext httpContext, string token)
+    {
+        var policy = _authOptions.GetSecurePolicy();
+        var isSecure = policy switch
+        {
+            CookieSecurePolicy.Always => true,
+            CookieSecurePolicy.SameAsRequest => httpContext.Request.IsHttps,
+            CookieSecurePolicy.None => false,
+            _ => true
+        };
+
+        var sameSite = _authOptions.GetSameSiteMode();
+
+        if (sameSite == SameSiteMode.None && !isSecure)
+        {
+            sameSite = SameSiteMode.Lax;
+        }
+
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = isSecure,
+            SameSite = sameSite,
             Path = "/",
             IsEssential = true
         };

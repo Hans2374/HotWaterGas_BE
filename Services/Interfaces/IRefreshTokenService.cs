@@ -14,6 +14,16 @@ public interface IRefreshTokenService
         Guid? tokenFamilyId = null,
         CancellationToken cancellationToken = default);
 
+    Task<(string Token, string TokenHash, DateTime ExpiresAtUtc)> GenerateRefreshTokenAsync(
+        Guid userId,
+        string? createdByIp,
+        string? userAgent,
+        string? deviceInfo,
+        int expiryDays,
+        Guid? parentTokenId = null,
+        Guid? tokenFamilyId = null,
+        CancellationToken cancellationToken = default);
+
     Task<string> HashTokenAsync(string plainToken);
 
     Task<(bool IsValid, RefreshTokens? Token, string? ErrorCode)> ValidateTokenAsync(
@@ -36,6 +46,8 @@ public interface IRefreshTokenService
     Task UpdateLastUsedAsync(Guid tokenId, CancellationToken cancellationToken = default);
 
     void SetRefreshCookie(HttpContext httpContext, string token, DateTime expiresAtUtc);
+
+    void SetSessionCookie(HttpContext httpContext, string token);
 
     void ClearRefreshCookie(HttpContext httpContext);
 

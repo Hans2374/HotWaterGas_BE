@@ -335,11 +335,15 @@ public partial class HotWaterGasDBContext : DbContext
 
             entity.HasIndex(e => e.GoogleId, "IX_Users_GoogleId");
 
+            entity.HasIndex(e => e.RefreshToken, "IX_Users_RefreshToken");
+
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Email).IsRequired();
             entity.Property(e => e.PasswordHash).IsRequired(false);
             entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(100);
             entity.Property(e => e.IsSuspended).IsRequired().HasDefaultValue(false);
+            entity.Property(e => e.RefreshToken).HasMaxLength(512);
+            entity.Property(e => e.RefreshTokenExpiresAt).HasColumnType("timestamp with time zone");
 
             entity.HasOne(d => d.Role).WithMany(p => p.Users)
                 .HasForeignKey(d => d.RoleId)

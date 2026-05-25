@@ -26,6 +26,7 @@ public class LoginWithRefreshResponse
     public string Role { get; set; } = string.Empty;
     public AuthUserResponse User { get; set; } = new();
     public DateTime AccessTokenExpiresAt { get; set; }
+    public bool RememberMe { get; set; } = false;
 }
 
 public class RefreshResponse

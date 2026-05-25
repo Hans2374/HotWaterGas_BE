@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using BCrypt.Net;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Repos.Interfaces;
 using Repos.Models;
 using Services.DTOs;
@@ -19,17 +20,20 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IEmailService _emailService;
     private readonly ILogger<AuthService> _logger;
+    private readonly AuthTokenOptions _authOptions;
 
     public AuthService(
         IUserRepository userRepository,
         IJwtTokenService jwtTokenService,
         IEmailService emailService,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        IOptions<AuthTokenOptions> authOptions)
     {
         _userRepository = userRepository;
         _jwtTokenService = jwtTokenService;
         _emailService = emailService;
         _logger = logger;
+        _authOptions = authOptions.Value;
     }
 
     public async Task<MessageResponse> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
@@ -597,5 +601,10 @@ public class AuthService : IAuthService
         _logger.LogInformation("[Auth.ChangePassword] Password changed UserId={UserId}", userId);
 
         return new MessageResponse { Message = "Mật khẩu đã được thay đổi thành công." };
+    }
+
+    public int GetRefreshTokenExpiryDays()
+    {
+        return _authOptions.RefreshTokenExpiryDays;
     }
 }

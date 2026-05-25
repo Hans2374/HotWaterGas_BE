@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Services.DTOs;
 using Services.Interfaces;
 
@@ -16,17 +17,20 @@ public class AuthController : ControllerBase
     private readonly IRefreshTokenService _refreshTokenService;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IConfiguration _configuration;
+    private readonly AuthTokenOptions _authOptions;
 
     public AuthController(
         IAuthService authService,
         IRefreshTokenService refreshTokenService,
         IJwtTokenService jwtTokenService,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IOptions<AuthTokenOptions> authOptions)
     {
         _authService = authService;
         _refreshTokenService = refreshTokenService;
         _jwtTokenService = jwtTokenService;
         _configuration = configuration;
+        _authOptions = authOptions.Value;
     }
 
     [HttpPost("register")]
@@ -41,21 +45,35 @@ public class AuthController : ControllerBase
     {
         var loginResponse = await _authService.LoginAsync(request, cancellationToken);
 
+        var expiryDays = _authOptions.GetRefreshTokenExpiryDays(request.RememberMe);
         var (refreshToken, _, expiresAtUtc) = await _refreshTokenService.GenerateRefreshTokenAsync(
             loginResponse.User.Id,
             GetClientIp(),
             GetUserAgent(),
             GetDeviceInfo(),
+            expiryDays,
             cancellationToken: cancellationToken);
 
-        _refreshTokenService.SetRefreshCookie(HttpContext, refreshToken, expiresAtUtc);
+        if (request.RememberMe)
+        {
+            _refreshTokenService.SetRefreshCookie(HttpContext, refreshToken, expiresAtUtc);
+        }
+        else
+        {
+            _refreshTokenService.SetSessionCookie(HttpContext, refreshToken);
+        }
+
+        _logger.LogInformation(
+            "[Auth.Login] UserId={UserId} RememberMe={RememberMe} ExpiryDays={ExpiryDays}",
+            loginResponse.User.Id, request.RememberMe, expiryDays);
 
         var response = new LoginWithRefreshResponse
         {
             AccessToken = loginResponse.AccessToken,
             Role = loginResponse.Role,
             User = loginResponse.User,
-            AccessTokenExpiresAt = _jwtTokenService.GetAccessTokenExpiry()
+            AccessTokenExpiresAt = _jwtTokenService.GetAccessTokenExpiry(),
+            RememberMe = request.RememberMe
         };
 
         return Ok(response);

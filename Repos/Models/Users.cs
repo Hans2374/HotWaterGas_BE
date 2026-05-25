@@ -25,6 +25,10 @@ public partial class Users
 
     public bool IsSuspended { get; set; } = false;
 
+    public string? RefreshToken { get; set; }
+
+    public DateTime? RefreshTokenExpiresAt { get; set; }
+
     public virtual Carts Carts { get; set; }
 
     public virtual EmailVerifications EmailVerifications { get; set; }

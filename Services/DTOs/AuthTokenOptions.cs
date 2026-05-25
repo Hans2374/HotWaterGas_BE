@@ -7,6 +7,7 @@ public class AuthTokenOptions
     public const string SectionName = "Auth";
 
     public int RefreshTokenExpiryDays { get; set; } = 30;
+    public int ShortSessionRefreshTokenExpiryDays { get; set; } = 1;
     public string RefreshCookieName { get; set; } = "refresh-token";
 
     private CookieSecurePolicy _securePolicy = CookieSecurePolicy.Always;
@@ -55,6 +56,11 @@ public class AuthTokenOptions
 
     public CookieSecurePolicy GetSecurePolicy() => _securePolicy;
     public SameSiteMode GetSameSiteMode() => _sameSiteMode;
+
+    public int GetRefreshTokenExpiryDays(bool rememberMe)
+    {
+        return rememberMe ? RefreshTokenExpiryDays : ShortSessionRefreshTokenExpiryDays;
+    }
 }
 
 public class JwtTokenOptions
