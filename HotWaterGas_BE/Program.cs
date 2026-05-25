@@ -14,15 +14,18 @@ using Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── Kestrel HTTPS Configuration ─────────────────────────────────────────────────
-// Explicitly configure Kestrel for HTTPS localhost
-builder.WebHost.ConfigureKestrel(options =>
+// ── Kestrel Configuration ──────────────────────────────────────────────────────
+// Production (Render/Docker): Listen on HTTP only with Render's PORT env var.
+// HTTPS is terminated at the platform/load balancer layer before reaching the container.
+// Development: Let launchSettings.json or default behavior handle HTTPS.
+if (!builder.Environment.IsDevelopment())
 {
-    options.ListenLocalhost(7140, listenOptions =>
+    var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+    builder.WebHost.ConfigureKestrel(options =>
     {
-        listenOptions.UseHttps();
+        options.ListenAnyIP(int.Parse(port));
     });
-});
+}
 
 // ── Forwarded Headers Configuration ─────────────────────────────────────────────
 // MUST be first to handle scheme/host normalization before any middleware runs
@@ -202,14 +205,17 @@ if (builder.Environment.IsDevelopment())
 // ── Build app (freezes service collection) ─────────────────────────────────────
 var app = builder.Build();
 
-// ── HTTPS Diagnostics ──────────────────────────────────────────────────────────
-var urls = builder.Configuration["ASPNETCORE_URLS"] ?? "https://localhost:7140";
+// ── Hosting Diagnostics ────────────────────────────────────────────────────────
+var configuredPort = builder.Environment.IsDevelopment()
+    ? "7140 (VS HTTPS)"
+    : (Environment.GetEnvironmentVariable("PORT") ?? "8080");
 app.Logger.LogInformation(
-    "[HTTPS] Backend configured for HTTPS: {Urls}", urls);
+    "[Hosting] Environment: {Environment}", builder.Environment.EnvironmentName);
 app.Logger.LogInformation(
-    "[HTTPS] Environment: {Environment}", builder.Environment.EnvironmentName);
+    "[Hosting] Listening on: http://0.0.0.0:{Port}", configuredPort);
 app.Logger.LogInformation(
-    "[HTTPS] Backend URL: https://localhost:7140");
+    "[Hosting] HTTPS handled by: {HttpsHandler}",
+    builder.Environment.IsDevelopment() ? "Visual Studio dev certificate" : "Platform/Load Balancer (Render)"));
 
 // ── Forwarded Headers (MUST be first) ─────────────────────────────────────────
 app.UseForwardedHeaders();
