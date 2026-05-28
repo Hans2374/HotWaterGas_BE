@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Services.DTOs;
 using Services.Interfaces;
 
 namespace HotWaterGas_BE.Controllers;
@@ -17,9 +18,18 @@ public class MeController : ControllerBase
     }
 
     [HttpGet("orders")]
-    public async Task<IActionResult> GetMyOrders(CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetMyOrders(
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
     {
-        var response = await _orderService.GetMyOrdersAsync(cancellationToken);
+        var request = new GetMyOrdersRequest
+        {
+            PageNumber = pageNumber,
+            PageSize = pageSize
+        };
+
+        var response = await _orderService.GetMyOrdersAsync(request, cancellationToken);
         return Ok(response);
     }
 
@@ -29,7 +39,7 @@ public class MeController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var response = await _orderService.GetMyOrderDetailAsync(orderId, cancellationToken);
-        
+
         if (response is null)
         {
             return NotFound(new { message = "Order not found." });

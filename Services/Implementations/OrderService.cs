@@ -23,15 +23,22 @@ public class OrderService : IOrderService
             ?? throw new ApiException(401, "Yêu cầu xác thực.");
     }
 
-    public async Task<List<MyOrderListItemResponse>> GetMyOrdersAsync(CancellationToken cancellationToken = default)
+    public async Task<PagedResponse<MyOrderListItemResponse>> GetMyOrdersAsync(GetMyOrdersRequest request, CancellationToken cancellationToken = default)
     {
         var userId = RequireUserId();
 
-        var orders = await _dbContext.Orders
+        var query = _dbContext.Orders
             .AsNoTracking()
-            .Include(o => o.OrderItems)
-            .Where(o => o.UserId == userId)
-            .OrderByDescending(o => o.CreatedAt)
+            .AsQueryable()
+            .Where(o => o.UserId == userId);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        query = query.OrderByDescending(o => o.CreatedAt);
+
+        var orders = await query
+            .Skip(request.SkipCount)
+            .Take(request.PageSize)
             .Select(o => new MyOrderListItemResponse
             {
                 OrderId = o.Id,
@@ -44,7 +51,18 @@ public class OrderService : IOrderService
             })
             .ToListAsync(cancellationToken);
 
-        return orders;
+        var totalPages = (int)Math.Ceiling(totalCount / (double)request.PageSize);
+
+        return new PagedResponse<MyOrderListItemResponse>
+        {
+            Items = orders,
+            PageNumber = request.PageNumber,
+            PageSize = request.PageSize,
+            TotalCount = totalCount,
+            TotalPages = totalPages,
+            HasPreviousPage = request.PageNumber > 1,
+            HasNextPage = request.PageNumber < totalPages
+        };
     }
 
     public async Task<MyOrderDetailResponse?> GetMyOrderDetailAsync(Guid orderId, CancellationToken cancellationToken = default)

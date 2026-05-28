@@ -302,6 +302,45 @@ public class PaymentReturnResponse
     public string Status { get; set; } = string.Empty;
 }
 
+// ── Customer Order Pagination ───────────────────────────────────────────────────
+
+public class GetMyOrdersRequest
+{
+    private const int DefaultPageSize = 10;
+    private const int MaxPageSize = 50;
+
+    private int _pageNumber = 1;
+    private int _pageSize = DefaultPageSize;
+
+    public int PageNumber
+    {
+        get => _pageNumber;
+        set => _pageNumber = value < 1 ? 1 : value;
+    }
+
+    public int PageSize
+    {
+        get => _pageSize;
+        set
+        {
+            if (value <= 0)
+            {
+                _pageSize = DefaultPageSize;
+            }
+            else if (value > MaxPageSize)
+            {
+                _pageSize = MaxPageSize;
+            }
+            else
+            {
+                _pageSize = value;
+            }
+        }
+    }
+
+    public int SkipCount => (PageNumber - 1) * PageSize;
+}
+
 // ── Admin Order Detail ─────────────────────────────────────────────────────────
 
 public class AdminOrderDetailResponse
