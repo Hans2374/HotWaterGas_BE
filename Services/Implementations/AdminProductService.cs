@@ -324,7 +324,7 @@ public class AdminProductService : IAdminProductService
                 ProductId = product.Id,
                 Publisher = request.Metadata.Publisher ?? string.Empty,
                 Developer = request.Metadata.Developer ?? string.Empty,
-                ReleaseDate = request.Metadata.ReleaseDate,
+                ReleaseDate = NormalizeToUtc(request.Metadata.ReleaseDate),
                 Platform = request.Metadata.Platform ?? string.Empty
             };
             _dbContext.ProductMetadatas.Add(metadata);
@@ -462,7 +462,7 @@ public class AdminProductService : IAdminProductService
         {
             product.ProductMetadatas.Publisher = request.Metadata.Publisher ?? product.ProductMetadatas.Publisher;
             product.ProductMetadatas.Developer = request.Metadata.Developer ?? product.ProductMetadatas.Developer;
-            product.ProductMetadatas.ReleaseDate = request.Metadata.ReleaseDate ?? product.ProductMetadatas.ReleaseDate;
+            product.ProductMetadatas.ReleaseDate = NormalizeToUtc(request.Metadata.ReleaseDate ?? product.ProductMetadatas.ReleaseDate);
             product.ProductMetadatas.Platform = request.Metadata.Platform ?? product.ProductMetadatas.Platform;
         }
         else if (request.Metadata != null)
@@ -472,7 +472,7 @@ public class AdminProductService : IAdminProductService
                 ProductId = product.Id,
                 Publisher = request.Metadata.Publisher ?? string.Empty,
                 Developer = request.Metadata.Developer ?? string.Empty,
-                ReleaseDate = request.Metadata.ReleaseDate,
+                ReleaseDate = NormalizeToUtc(request.Metadata.ReleaseDate),
                 Platform = request.Metadata.Platform ?? string.Empty
             };
             _dbContext.ProductMetadatas.Add(metadata);
@@ -889,5 +889,16 @@ public class AdminProductService : IAdminProductService
         slug = slug.Trim('-');
 
         return slug + "-" + Guid.NewGuid().ToString("N").Substring(0, 6);
+    }
+
+    private static DateTime? NormalizeToUtc(DateTime? value)
+    {
+        if (!value.HasValue)
+            return null;
+
+        if (value.Value.Kind == DateTimeKind.Utc)
+            return value.Value;
+
+        return DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
     }
 }
