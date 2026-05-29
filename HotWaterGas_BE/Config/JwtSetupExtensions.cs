@@ -32,8 +32,12 @@ public static class JwtSetupExtensions
                 // JWT is primary for API authentication/authorization
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                 options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-                // DefaultChallengeScheme must be compatible with the schemes we use
-                // For Google OAuth, we explicitly specify the scheme in Challenge() call
+                // Explicitly set forbid/challenge defaults to JWT so that role-based
+                // authorization failures (e.g., non-admin accessing admin endpoints)
+                // produce a proper 403 JSON response instead of crashing with
+                // "No authenticationScheme was specified, and there was no DefaultForbidScheme found."
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultForbidScheme = JwtBearerDefaults.AuthenticationScheme;
             })
             .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
             {
