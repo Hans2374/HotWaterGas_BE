@@ -752,6 +752,102 @@ public class AdminProductService : IAdminProductService
         }
     }
 
+    public async Task<List<FeaturedProductAdminDto>> GetFeaturedProductsAsync(CancellationToken cancellationToken = default)
+    {
+        var featured = await _dbContext.Products
+            .AsNoTracking()
+            .Where(p => p.IsFeatured)
+            .OrderBy(p => p.Name)
+            .Select(p => new FeaturedProductAdminDto
+            {
+                Id = p.Id,
+                Name = p.Name,
+                PrimaryImageUrl = p.ProductImages
+                    .OrderBy(i => i.IsPrimary ? 0 : 1)
+                    .ThenBy(i => i.DisplayOrder)
+                    .Select(i => i.ImageUrl)
+                    .FirstOrDefault() ?? string.Empty,
+                IsFeatured = true
+            })
+            .ToListAsync(cancellationToken);
+
+        _logger?.LogInformation("[AdminProduct.GetFeatured] Count={Count}", featured.Count);
+        return featured;
+    }
+
+    public async Task<List<FeaturedProductAdminDto>> UpdateFeaturedProductsAsync(UpdateFeaturedProductsRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request == null)
+        {
+            throw new ApiException(400, "Request body is required.");
+        }
+
+        if (request.ProductIds == null)
+        {
+            throw new ApiException(400, "ProductIds list is required.");
+        }
+
+        var distinctIds = request.ProductIds.Distinct().ToList();
+
+        if (distinctIds.Count != request.ProductIds.Count)
+        {
+            throw new ApiException(400, "Duplicate product IDs are not allowed.");
+        }
+
+        if (distinctIds.Count > 5)
+        {
+            throw new ApiException(400, "A maximum of 5 featured products is allowed.");
+        }
+
+        if (distinctIds.Count > 0)
+        {
+            var existingCount = await _dbContext.Products
+                .CountAsync(p => distinctIds.Contains(p.Id), cancellationToken);
+
+            if (existingCount != distinctIds.Count)
+            {
+                throw new ApiException(400, "One or more product IDs do not exist.");
+            }
+        }
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var now = DateTime.UtcNow;
+
+            _dbContext.Products
+                .Where(p => p.IsFeatured)
+                .ExecuteUpdate(setters => setters
+                    .SetProperty(p => p.IsFeatured, false)
+                    .SetProperty(p => p.UpdatedAt, now));
+
+            if (distinctIds.Count > 0)
+            {
+                _dbContext.Products
+                    .Where(p => distinctIds.Contains(p.Id))
+                    .ExecuteUpdate(setters => setters
+                        .SetProperty(p => p.IsFeatured, true)
+                        .SetProperty(p => p.UpdatedAt, now));
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+
+            _logger?.LogInformation(
+                "[AdminProduct.UpdateFeatured] FeaturedCount={Count} ProductIds={ProductIds}",
+                distinctIds.Count,
+                string.Join(",", distinctIds));
+
+            return await GetFeaturedProductsAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            _logger?.LogError(ex, "[AdminProduct.UpdateFeatured] Failed");
+            throw;
+        }
+    }
+
     private static string GenerateSlug(string name)
     {
         var slug = name.ToLowerInvariant()

@@ -10,4 +10,5 @@ public interface IProductCatalogService
     Task<List<ProductLookupResponse>> GetCategoriesAsync(CancellationToken cancellationToken = default);
     Task<List<ProductLookupResponse>> GetTagsAsync(CancellationToken cancellationToken = default);
     Task<List<CategoryHomepageResponse>> GetHomepageCategoriesAsync(CancellationToken cancellationToken = default);
+    Task<List<FeaturedProductDto>> GetFeaturedProductsAsync(CancellationToken cancellationToken = default);
 }

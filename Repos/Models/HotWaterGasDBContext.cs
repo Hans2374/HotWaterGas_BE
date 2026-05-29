@@ -258,6 +258,10 @@ public partial class HotWaterGasDBContext : DbContext
                 .IsRequired()
                 .HasDefaultValue("");
 
+            entity.Property(e => e.IsFeatured)
+                .IsRequired()
+                .HasDefaultValue(false);
+
             entity.HasOne(d => d.Discount).WithMany(p => p.Products)
                 .HasForeignKey(d => d.DiscountId)
                 .OnDelete(DeleteBehavior.SetNull);

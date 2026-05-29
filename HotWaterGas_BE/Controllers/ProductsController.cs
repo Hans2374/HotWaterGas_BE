@@ -72,6 +72,13 @@ public class ProductsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("featured")]
+    public async Task<IActionResult> GetFeaturedProducts(CancellationToken cancellationToken = default)
+    {
+        var result = await _productCatalogService.GetFeaturedProductsAsync(cancellationToken);
+        return Ok(result);
+    }
+
     private static List<Guid> ParseGuidList(string? csv)
     {
         if (string.IsNullOrWhiteSpace(csv))

@@ -343,6 +343,49 @@ public class ProductCatalogService : IProductCatalogService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<List<FeaturedProductDto>> GetFeaturedProductsAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+
+        var rows = await _dbContext.Products
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted && p.IsFeatured)
+            .OrderBy(p => Guid.NewGuid())
+            .Take(5)
+            .Select(p => new
+            {
+                p.Id,
+                p.Name,
+                p.Slug,
+                p.Price,
+                DiscountPercentage = p.Discount != null && p.Discount.StartDate <= now && p.Discount.EndDate >= now
+                    ? (decimal?)p.Discount.Percentage
+                    : null,
+                PrimaryImageUrl = p.ProductImages
+                    .OrderBy(i => i.IsPrimary ? 0 : 1)
+                    .ThenBy(i => i.DisplayOrder)
+                    .Select(i => i.ImageUrl)
+                    .FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(p =>
+        {
+            var finalPrice = CalculateFinalPrice(p.Price, p.DiscountPercentage);
+            return new FeaturedProductDto
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Slug = p.Slug,
+                Price = p.Price,
+                FinalPrice = finalPrice,
+                DiscountPrice = p.DiscountPercentage.HasValue ? finalPrice : null,
+                DiscountPercentage = p.DiscountPercentage,
+                PrimaryImageUrl = p.PrimaryImageUrl ?? string.Empty
+            };
+        }).ToList();
+    }
+
     private static IQueryable<Products> ApplySorting(IQueryable<Products> query, string? sortBy, string? sortDirection)
     {
         var sortField = (sortBy ?? "name").Trim().ToLowerInvariant();

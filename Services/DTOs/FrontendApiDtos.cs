@@ -386,3 +386,30 @@ public class AdminOrderLicenseResponse
     public string KeyValue { get; set; } = string.Empty;
     public DateTime? UsedAt { get; set; }
 }
+
+// ── Featured Products ─────────────────────────────────────────────────────────
+
+public class FeaturedProductAdminDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string PrimaryImageUrl { get; set; } = string.Empty;
+    public bool IsFeatured { get; set; }
+}
+
+public class FeaturedProductDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Slug { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+    public decimal FinalPrice { get; set; }
+    public decimal? DiscountPrice { get; set; }
+    public decimal? DiscountPercentage { get; set; }
+    public string PrimaryImageUrl { get; set; } = string.Empty;
+}
+
+public class UpdateFeaturedProductsRequest
+{
+    public List<Guid> ProductIds { get; set; } = new();
+}

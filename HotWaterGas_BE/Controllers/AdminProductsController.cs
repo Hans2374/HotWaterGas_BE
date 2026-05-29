@@ -89,6 +89,28 @@ public class AdminProductsController : ControllerBase
         return Ok(response);
     }
 
+    // ─── Featured Products ─────────────────────────────────────────────────────
+
+    [Authorize(Roles = "Admin")]
+    [HttpGet("/api/admin/products/featured")]
+    public async Task<IActionResult> GetFeaturedProducts(CancellationToken cancellationToken = default)
+    {
+        var response = await _adminProductService.GetFeaturedProductsAsync(cancellationToken);
+        return Ok(response);
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPut("/api/admin/products/featured")]
+    public async Task<IActionResult> UpdateFeaturedProducts(
+        [FromBody] UpdateFeaturedProductsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _adminProductService.UpdateFeaturedProductsAsync(request, cancellationToken);
+        return Ok(response);
+    }
+
+    // ─── Product CRUD ─────────────────────────────────────────────────────────
+
     [Authorize(Roles = "Admin")]
     [HttpPost]
     public async Task<IActionResult> CreateProduct(

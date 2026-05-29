@@ -13,4 +13,6 @@ public interface IAdminProductService
     Task DisableProductAsync(Guid id, CancellationToken cancellationToken = default);
     Task RestoreProductAsync(Guid id, CancellationToken cancellationToken = default);
     Task HardDeleteProductAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<List<FeaturedProductAdminDto>> GetFeaturedProductsAsync(CancellationToken cancellationToken = default);
+    Task<List<FeaturedProductAdminDto>> UpdateFeaturedProductsAsync(UpdateFeaturedProductsRequest request, CancellationToken cancellationToken = default);
 }

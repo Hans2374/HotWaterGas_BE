@@ -19,6 +19,8 @@ public partial class Products
 
     public bool IsDeleted { get; set; }
 
+    public bool IsFeatured { get; set; }
+
     public int Stock { get; set; }
 
     public DateTime CreatedAt { get; set; }
