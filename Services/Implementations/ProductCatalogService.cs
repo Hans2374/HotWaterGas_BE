@@ -165,6 +165,8 @@ public class ProductCatalogService : IProductCatalogService
             Name = product.Name,
             Description = product.Description,
             Subtitle = product.ProductMetadatas?.Publisher ?? string.Empty,
+            Developer = product.ProductMetadatas?.Developer ?? string.Empty,
+            Publisher = product.ProductMetadatas?.Publisher ?? string.Empty,
             Rating = product.Reviews.Count == 0 ? 0 : decimal.Round((decimal)product.Reviews.Average(r => r.Rating), 1),
             SoldCount = product.OrderItems.Sum(oi => oi.Quantity),
             HasStock = computedStock > 0,
@@ -176,9 +178,14 @@ public class ProductCatalogService : IProductCatalogService
                 DiscountPercentage = discountPercentage,
                 HasDiscount = discountPercentage.HasValue
             },
-            Images = product.ProductImages
+            PrimaryImageUrl = product.ProductImages
                 .OrderBy(i => i.IsPrimary ? 0 : 1)
                 .ThenBy(i => i.DisplayOrder)
+                .Select(i => i.ImageUrl)
+                .FirstOrDefault() ?? string.Empty,
+            Images = product.ProductImages
+                .Where(i => i.DisplayOrder >= 1)
+                .OrderBy(i => i.DisplayOrder)
                 .Select(i => new ProductImageResponse
                 {
                     Id = i.Id,
@@ -365,7 +372,15 @@ public class ProductCatalogService : IProductCatalogService
                     .OrderBy(i => i.IsPrimary ? 0 : 1)
                     .ThenBy(i => i.DisplayOrder)
                     .Select(i => i.ImageUrl)
-                    .FirstOrDefault()
+                    .FirstOrDefault(),
+                BannerImageUrl = p.ProductImages
+                    .FirstOrDefault(i => i.DisplayOrder == 1) != null
+                        ? p.ProductImages.FirstOrDefault(i => i.DisplayOrder == 1)!.ImageUrl
+                        : p.ProductImages
+                            .OrderBy(i => i.IsPrimary ? 0 : 1)
+                            .ThenBy(i => i.DisplayOrder)
+                            .Select(i => i.ImageUrl)
+                            .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
 
@@ -381,7 +396,8 @@ public class ProductCatalogService : IProductCatalogService
                 FinalPrice = finalPrice,
                 DiscountPrice = p.DiscountPercentage.HasValue ? finalPrice : null,
                 DiscountPercentage = p.DiscountPercentage,
-                PrimaryImageUrl = p.PrimaryImageUrl ?? string.Empty
+                PrimaryImageUrl = p.PrimaryImageUrl ?? string.Empty,
+                BannerImageUrl = p.BannerImageUrl ?? string.Empty
             };
         }).ToList();
     }

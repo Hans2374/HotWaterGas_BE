@@ -83,11 +83,14 @@ public class ProductDetailResponse
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Subtitle { get; set; } = string.Empty;
+    public string Developer { get; set; } = string.Empty;
+    public string Publisher { get; set; } = string.Empty;
     public decimal Rating { get; set; }
     public int SoldCount { get; set; }
     public bool HasStock { get; set; }
     public int Stock { get; set; }
     public ProductPriceResponse Price { get; set; } = new();
+    public string PrimaryImageUrl { get; set; } = string.Empty;
     public List<ProductImageResponse> Images { get; set; } = new();
     public List<ProductLookupResponse> Categories { get; set; } = new();
     public List<ProductLookupResponse> Tags { get; set; } = new();

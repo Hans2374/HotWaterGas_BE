@@ -407,6 +407,7 @@ public class FeaturedProductDto
     public decimal? DiscountPrice { get; set; }
     public decimal? DiscountPercentage { get; set; }
     public string PrimaryImageUrl { get; set; } = string.Empty;
+    public string BannerImageUrl { get; set; } = string.Empty;
 }
 
 public class UpdateFeaturedProductsRequest
