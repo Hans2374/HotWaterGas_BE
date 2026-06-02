@@ -272,6 +272,22 @@ public class AuthController : ControllerBase
             });
         }
 
+        if (token.User.IsSuspended)
+        {
+            _logger.LogWarning(
+                "[RefreshToken.SuspendedUser] Suspended user attempted refresh. UserId={UserId}",
+                token.UserId);
+
+            await _refreshTokenService.RevokeTokenFamilyAsync(token.TokenFamilyId, GetClientIp(), cancellationToken);
+            _refreshTokenService.ClearRefreshCookie(HttpContext);
+
+            return Unauthorized(new AuthErrorResponse
+            {
+                Message = "Tài khoản đã bị tạm ngưng.",
+                Code = "ACCOUNT_SUSPENDED"
+            });
+        }
+
         if (await _refreshTokenService.IsTokenReusedAsync(token.TokenHash, cancellationToken))
         {
             _logger.LogCritical(
@@ -485,6 +501,7 @@ public class AuthController : ControllerBase
             "INVALID_TOKEN" => "Invalid or unknown refresh token.",
             "REVOKED_TOKEN" => "This session has been revoked.",
             "EXPIRED_TOKEN" => "Refresh token has expired. Please log in again.",
+            "ACCOUNT_SUSPENDED" => "Tài khoản đã bị tạm ngưng.",
             _ => "Token validation failed."
         };
     }

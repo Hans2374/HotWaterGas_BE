@@ -279,6 +279,15 @@ public class AuthService : IAuthService
     public string GenerateAccessTokenForRefresh(Repos.Models.Users user)
     {
         var roleName = user.Role?.Name ?? "Customer";
+
+        if (user.Role is null)
+        {
+            _logger.LogWarning(
+                "[Auth.GenerateAccessTokenForRefresh] User role was not loaded. UserId={UserId}. " +
+                "Defaulting to 'Customer'. Ensure RefreshTokenService includes the Role navigation property.",
+                user.Id);
+        }
+
         return _jwtTokenService.GenerateToken(user, roleName);
     }
 

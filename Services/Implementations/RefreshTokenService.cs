@@ -137,6 +137,7 @@ public class RefreshTokenService : IRefreshTokenService
     {
         return await _dbContext.RefreshTokens
             .Include(rt => rt.User)
+                .ThenInclude(u => u.Role)
             .FirstOrDefaultAsync(rt => rt.TokenHash == tokenHash, cancellationToken);
     }
 
