@@ -31,6 +31,16 @@ public class ProductCatalogService : IProductCatalogService
             productsQuery = productsQuery.Where(p => p.Category.Any(c => c.Id == query.CategoryId.Value));
         }
 
+        if (query.PublisherId.HasValue)
+        {
+            productsQuery = productsQuery.Where(p => p.PublisherId == query.PublisherId.Value);
+        }
+
+        if (query.DeveloperId.HasValue)
+        {
+            productsQuery = productsQuery.Where(p => p.DeveloperId == query.DeveloperId.Value);
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var search = query.Search.Trim();
@@ -126,6 +136,144 @@ public class ProductCatalogService : IProductCatalogService
         };
     }
 
+    public async Task<List<SearchSuggestionDto>> GetSearchSuggestionsAsync(string? query, CancellationToken cancellationToken = default)
+    {
+        var trimmedQuery = query?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedQuery) || trimmedQuery.Length < 2)
+        {
+            return new List<SearchSuggestionDto>();
+        }
+
+        var startsWithPattern = $"{trimmedQuery}%";
+        var containsPattern = $"%{trimmedQuery}%";
+
+        var productSuggestions = await _dbContext.Products
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted && EF.Functions.ILike(p.Name, containsPattern))
+            .OrderBy(p => EF.Functions.ILike(p.Name, startsWithPattern) ? 0 : 1)
+            .ThenBy(p => p.Name)
+            .Select(p => new SearchSuggestionDto
+            {
+                Id = p.Id.ToString(),
+                Name = p.Name,
+                Type = "Product",
+                ImageUrl = p.ProductImages
+                    .OrderBy(i => i.IsPrimary ? 0 : 1)
+                    .ThenBy(i => i.DisplayOrder)
+                    .Select(i => i.ImageUrl)
+                    .FirstOrDefault() ?? string.Empty,
+                NavigationUrl = "/products/" + p.Slug
+            })
+            .Take(5)
+            .ToListAsync(cancellationToken);
+
+        var publisherSuggestions = await _dbContext.Publishers
+            .AsNoTracking()
+            .Where(p => EF.Functions.ILike(p.Name, containsPattern))
+            .OrderBy(p => EF.Functions.ILike(p.Name, startsWithPattern) ? 0 : 1)
+            .ThenBy(p => p.Name)
+            .Select(p => new SearchSuggestionDto
+            {
+                Id = p.Id.ToString(),
+                Name = p.Name,
+                Type = "Publisher",
+                ImageUrl = p.LogoUrl ?? string.Empty,
+                NavigationUrl = "/publishers/" + p.Id
+            })
+            .Take(2)
+            .ToListAsync(cancellationToken);
+
+        var developerSuggestions = await _dbContext.Developers
+            .AsNoTracking()
+            .Where(d => EF.Functions.ILike(d.Name, containsPattern))
+            .OrderBy(d => EF.Functions.ILike(d.Name, startsWithPattern) ? 0 : 1)
+            .ThenBy(d => d.Name)
+            .Select(d => new SearchSuggestionDto
+            {
+                Id = d.Id.ToString(),
+                Name = d.Name,
+                Type = "Developer",
+                ImageUrl = d.LogoUrl ?? string.Empty,
+                NavigationUrl = "/developers/" + d.Id
+            })
+            .Take(1)
+            .ToListAsync(cancellationToken);
+
+        return productSuggestions
+            .Concat(publisherSuggestions)
+            .Concat(developerSuggestions)
+            .Take(8)
+            .ToList();
+    }
+
+    public async Task<List<CatalogDirectoryItemResponse>> GetPublishersAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Publishers
+            .AsNoTracking()
+            .Select(p => new CatalogDirectoryItemResponse
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Slug = p.Slug,
+                LogoUrl = p.LogoUrl ?? string.Empty,
+                Description = p.Description ?? string.Empty,
+                TotalProducts = p.Products.Count(product => !product.IsDeleted)
+            })
+            .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+            .OrderBy(p => p.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<CatalogDirectoryItemResponse>> GetDevelopersAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Developers
+            .AsNoTracking()
+            .Select(d => new CatalogDirectoryItemResponse
+            {
+                Id = d.Id,
+                Name = d.Name,
+                Slug = d.Slug,
+                LogoUrl = d.LogoUrl ?? string.Empty,
+                Description = d.Description ?? string.Empty,
+                TotalProducts = d.Products.Count(product => !product.IsDeleted)
+            })
+            .Where(d => !string.IsNullOrWhiteSpace(d.Name))
+            .OrderBy(d => d.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<CatalogEntityDetailResponse?> GetPublisherByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Publishers
+            .AsNoTracking()
+            .Where(p => p.Id == id)
+            .Select(p => new CatalogEntityDetailResponse
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Slug = p.Slug,
+                LogoUrl = p.LogoUrl ?? string.Empty,
+                Description = p.Description ?? string.Empty
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<CatalogEntityDetailResponse?> GetDeveloperByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Developers
+            .AsNoTracking()
+            .Where(d => d.Id == id)
+            .Select(d => new CatalogEntityDetailResponse
+            {
+                Id = d.Id,
+                Name = d.Name,
+                Slug = d.Slug,
+                LogoUrl = d.LogoUrl ?? string.Empty,
+                Description = d.Description ?? string.Empty
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<ProductDetailResponse?> GetProductBySlugAsync(string slug, CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
@@ -140,6 +288,8 @@ public class ProductCatalogService : IProductCatalogService
             .Include(p => p.Reviews)
             .Include(p => p.OrderItems)
             .Include(p => p.Discount)
+            .Include(p => p.Publisher)
+            .Include(p => p.Developer)
             .Include(p => p.SteamKeys)
             .FirstOrDefaultAsync(p => !p.IsDeleted && p.Slug == slug, cancellationToken);
 
@@ -164,9 +314,9 @@ public class ProductCatalogService : IProductCatalogService
             Id = product.Id,
             Name = product.Name,
             Description = product.Description,
-            Subtitle = product.ProductMetadatas?.Publisher ?? string.Empty,
-            Developer = product.ProductMetadatas?.Developer ?? string.Empty,
-            Publisher = product.ProductMetadatas?.Publisher ?? string.Empty,
+            Subtitle = product.Publisher?.Name ?? product.ProductMetadatas?.Publisher ?? string.Empty,
+            Developer = product.Developer?.Name ?? product.ProductMetadatas?.Developer ?? string.Empty,
+            Publisher = product.Publisher?.Name ?? product.ProductMetadatas?.Publisher ?? string.Empty,
             Rating = product.Reviews.Count == 0 ? 0 : decimal.Round((decimal)product.Reviews.Average(r => r.Rating), 1),
             SoldCount = product.OrderItems.Sum(oi => oi.Quantity),
             HasStock = computedStock > 0,

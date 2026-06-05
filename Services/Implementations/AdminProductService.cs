@@ -39,6 +39,8 @@ public class AdminProductService : IAdminProductService
             .Include(p => p.ProductImages)
             .Include(p => p.Discount)
             .Include(p => p.ProductMetadatas)
+            .Include(p => p.Publisher)
+            .Include(p => p.Developer)
             .Include(p => p.Category)
             .Include(p => p.SteamKeys)
             .AsQueryable();
@@ -54,6 +56,8 @@ public class AdminProductService : IAdminProductService
             productsQuery = productsQuery.Where(p =>
                 (p.Name != null && EF.Functions.Like(p.Name.ToLower(), $"%{searchTerm}%")) ||
                 (p.Slug != null && EF.Functions.Like(p.Slug.ToLower(), $"%{searchTerm}%")) ||
+                (p.Publisher != null && p.Publisher.Name != null && EF.Functions.Like(p.Publisher.Name.ToLower(), $"%{searchTerm}%")) ||
+                (p.Developer != null && p.Developer.Name != null && EF.Functions.Like(p.Developer.Name.ToLower(), $"%{searchTerm}%")) ||
                 (p.ProductMetadatas != null &&
                     ((p.ProductMetadatas.Developer != null && EF.Functions.Like(p.ProductMetadatas.Developer.ToLower(), $"%{searchTerm}%")) ||
                      (p.ProductMetadatas.Publisher != null && EF.Functions.Like(p.ProductMetadatas.Publisher.ToLower(), $"%{searchTerm}%")))));
@@ -93,7 +97,13 @@ public class AdminProductService : IAdminProductService
                 Id = x.Product.Id,
                 Name = x.Product.Name,
                 Slug = x.Product.Slug,
-                Subtitle = x.Product.ProductMetadatas != null ? x.Product.ProductMetadatas.Publisher : string.Empty,
+                DeveloperName = x.Product.Developer?.Name ?? x.Product.ProductMetadatas?.Developer ?? string.Empty,
+                PublisherName = x.Product.Publisher?.Name ?? x.Product.ProductMetadatas?.Publisher ?? string.Empty,
+                Subtitle = string.Join(" - ", new[]
+                {
+                    x.Product.Developer?.Name ?? x.Product.ProductMetadatas?.Developer,
+                    x.Product.Publisher?.Name ?? x.Product.ProductMetadatas?.Publisher
+                }.Where(value => !string.IsNullOrWhiteSpace(value))),
                 Price = x.Product.Price,
                 FinalPrice = x.Product.Discount != null && x.Product.Discount.StartDate <= now && x.Product.Discount.EndDate >= now
                     ? Math.Round(x.Product.Price * (1 - (x.Product.Discount.Percentage / 100m)), 0, MidpointRounding.AwayFromZero)
@@ -143,6 +153,8 @@ public class AdminProductService : IAdminProductService
             .Include(p => p.ProductImages)
             .Include(p => p.Discount)
             .Include(p => p.ProductMetadatas)
+            .Include(p => p.Publisher)
+            .Include(p => p.Developer)
             .Include(p => p.SteamKeys)
             .Where(p => p.IsDeleted)
             .AsQueryable();
@@ -166,7 +178,13 @@ public class AdminProductService : IAdminProductService
                 Id = x.Product.Id,
                 Name = x.Product.Name,
                 Slug = x.Product.Slug,
-                Subtitle = x.Product.ProductMetadatas != null ? x.Product.ProductMetadatas.Publisher : string.Empty,
+                DeveloperName = x.Product.Developer?.Name ?? x.Product.ProductMetadatas?.Developer ?? string.Empty,
+                PublisherName = x.Product.Publisher?.Name ?? x.Product.ProductMetadatas?.Publisher ?? string.Empty,
+                Subtitle = string.Join(" - ", new[]
+                {
+                    x.Product.Developer?.Name ?? x.Product.ProductMetadatas?.Developer,
+                    x.Product.Publisher?.Name ?? x.Product.ProductMetadatas?.Publisher
+                }.Where(value => !string.IsNullOrWhiteSpace(value))),
                 Price = x.Product.Price,
                 FinalPrice = x.Product.Discount != null && x.Product.Discount.StartDate <= now && x.Product.Discount.EndDate >= now
                     ? Math.Round(x.Product.Price * (1 - (x.Product.Discount.Percentage / 100m)), 0, MidpointRounding.AwayFromZero)

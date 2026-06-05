@@ -20,6 +20,8 @@ public class ProductsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         [FromQuery] string? categoryId = null,
+        [FromQuery] string? publisherId = null,
+        [FromQuery] string? developerId = null,
         [FromQuery] string? search = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDirection = null,
@@ -35,11 +37,25 @@ public class ProductsController : ControllerBase
             parsedCategoryId = categoryGuid;
         }
 
+        Guid? parsedPublisherId = null;
+        if (!string.IsNullOrWhiteSpace(publisherId) && Guid.TryParse(publisherId, out var publisherGuid))
+        {
+            parsedPublisherId = publisherGuid;
+        }
+
+        Guid? parsedDeveloperId = null;
+        if (!string.IsNullOrWhiteSpace(developerId) && Guid.TryParse(developerId, out var developerGuid))
+        {
+            parsedDeveloperId = developerGuid;
+        }
+
         var query = new ProductCatalogQuery
         {
             Page = page,
             PageSize = pageSize,
             CategoryId = parsedCategoryId,
+            PublisherId = parsedPublisherId,
+            DeveloperId = parsedDeveloperId,
             Search = search,
             SortBy = sortBy,
             SortDirection = sortDirection,
@@ -51,6 +67,13 @@ public class ProductsController : ControllerBase
 
         var response = await _productCatalogService.GetProductsAsync(query, cancellationToken);
         return Ok(response);
+    }
+
+    [HttpGet("search/suggestions")]
+    public async Task<IActionResult> GetSearchSuggestions([FromQuery] string? q, CancellationToken cancellationToken = default)
+    {
+        var suggestions = await _productCatalogService.GetSearchSuggestionsAsync(q, cancellationToken);
+        return Ok(suggestions);
     }
 
     [HttpGet("slug/{slug}")]

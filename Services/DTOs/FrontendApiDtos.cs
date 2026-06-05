@@ -132,6 +132,8 @@ public class AdminProductListItemResponse
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
     public string Subtitle { get; set; } = string.Empty;
+    public string DeveloperName { get; set; } = string.Empty;
+    public string PublisherName { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public decimal FinalPrice { get; set; }
     public decimal? DiscountPrice { get; set; }

@@ -5,6 +5,8 @@ public class ProductCatalogQuery
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 10;
     public Guid? CategoryId { get; set; }
+    public Guid? PublisherId { get; set; }
+    public Guid? DeveloperId { get; set; }
     public string? Search { get; set; }
     public string? SortBy { get; set; }
     public string? SortDirection { get; set; }
@@ -75,6 +77,34 @@ public class ProductSystemRequirementsResponse
 {
     public ProductRequirementBlockResponse Minimum { get; set; } = new();
     public ProductRequirementBlockResponse Recommended { get; set; } = new();
+}
+
+public class SearchSuggestionDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string ImageUrl { get; set; } = string.Empty;
+    public string NavigationUrl { get; set; } = string.Empty;
+}
+
+public class CatalogEntityDetailResponse
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Slug { get; set; } = string.Empty;
+    public string LogoUrl { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+}
+
+public class CatalogDirectoryItemResponse
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Slug { get; set; } = string.Empty;
+    public string LogoUrl { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public int TotalProducts { get; set; }
 }
 
 public class ProductDetailResponse
