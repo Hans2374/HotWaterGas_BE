@@ -212,6 +212,8 @@ public class AdminProductService : IAdminProductService
             .Include(p => p.Category)
             .Include(p => p.Tag)
             .Include(p => p.Discount)
+            .Include(p => p.Publisher)
+            .Include(p => p.Developer)
             .Include(p => p.SteamKeys)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
 
@@ -238,14 +240,17 @@ public class AdminProductService : IAdminProductService
             Price = product.Price,
             DiscountPercentage = discountPercentage,
             DiscountId = product.Discount?.Id,
-            // Stock is now derived from actual available keys (canonical source)
             Stock = computedStock,
+            PublisherId = product.PublisherId,
+            DeveloperId = product.DeveloperId,
             Metadata = new AdminProductMetadataResponse
             {
                 Publisher = product.ProductMetadatas?.Publisher ?? string.Empty,
                 Developer = product.ProductMetadatas?.Developer ?? string.Empty,
                 ReleaseDate = product.ProductMetadatas?.ReleaseDate,
-                Platform = product.ProductMetadatas?.Platform ?? string.Empty
+                Platform = product.ProductMetadatas?.Platform ?? string.Empty,
+                PublisherId = product.PublisherId,
+                DeveloperId = product.DeveloperId
             },
             SystemRequirements = new AdminProductSystemRequirementsResponse
             {
@@ -312,7 +317,9 @@ public class AdminProductService : IAdminProductService
             Stock = 0,
             IsDeleted = false,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
+            PublisherId = request.PublisherId,
+            DeveloperId = request.DeveloperId
         };
 
         _dbContext.Products.Add(product);
@@ -457,6 +464,8 @@ public class AdminProductService : IAdminProductService
         product.ShortDescription = request.ShortDescription;
         product.Price = request.Price;
         product.UpdatedAt = now;
+        product.PublisherId = request.PublisherId;
+        product.DeveloperId = request.DeveloperId;
 
         if (product.ProductMetadatas != null && request.Metadata != null)
         {

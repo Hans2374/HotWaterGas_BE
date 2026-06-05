@@ -154,6 +154,8 @@ public class AdminProductDetailResponse
     public decimal? DiscountPercentage { get; set; }
     public Guid? DiscountId { get; set; }
     public int Stock { get; set; }
+    public Guid? PublisherId { get; set; }
+    public Guid? DeveloperId { get; set; }
     public AdminProductMetadataResponse Metadata { get; set; } = new();
     public AdminProductSystemRequirementsResponse SystemRequirements { get; set; } = new();
     public List<AdminProductImageResponse> Images { get; set; } = new();
@@ -167,6 +169,8 @@ public class AdminProductMetadataResponse
     public string Developer { get; set; } = string.Empty;
     public DateTime? ReleaseDate { get; set; }
     public string Platform { get; set; } = string.Empty;
+    public Guid? PublisherId { get; set; }
+    public Guid? DeveloperId { get; set; }
 }
 
 public class AdminProductImageResponse
@@ -195,6 +199,8 @@ public class AdminProductUpsertRequest
     public List<Guid> CategoryIds { get; set; } = new();
     public Guid? CategoryId { get; set; }
     public List<Guid> TagIds { get; set; } = new();
+    public Guid? PublisherId { get; set; }
+    public Guid? DeveloperId { get; set; }
     public AdminProductMetadataRequest Metadata { get; set; } = new();
     public AdminProductSystemRequirementsRequest SystemRequirements { get; set; } = new();
 }
@@ -211,6 +217,8 @@ public class AdminProductMetadataRequest
     public string Developer { get; set; } = string.Empty;
     public DateTime? ReleaseDate { get; set; }
     public string Platform { get; set; } = string.Empty;
+    public Guid? PublisherId { get; set; }
+    public Guid? DeveloperId { get; set; }
 }
 
 public class AdminProductSystemRequirementsRequest

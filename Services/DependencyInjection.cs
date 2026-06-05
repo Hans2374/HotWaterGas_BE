@@ -22,6 +22,8 @@ public static class DependencyInjection
         services.AddScoped<IAdminUserService, AdminUserService>();
         services.AddScoped<IAdminCategoryService, AdminCategoryService>();
         services.AddScoped<IAdminTagService, AdminTagService>();
+        services.AddScoped<IAdminPublisherService, AdminPublisherService>();
+        services.AddScoped<IAdminDeveloperService, AdminDeveloperService>();
         services.AddScoped<IAdminRoleService, AdminRoleService>();
         services.AddScoped<IAdminDiscountService, AdminDiscountService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();

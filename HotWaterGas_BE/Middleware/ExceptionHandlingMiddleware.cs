@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Services.Implementations;
 
 namespace HotWaterGas_BE.Middleware;
@@ -25,6 +27,38 @@ public class ExceptionHandlingMiddleware
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = apiException.StatusCode;
             await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = apiException.Message }));
+        }
+        catch (DbUpdateException dbUpdateException) when (dbUpdateException.InnerException is PostgresException postgresException)
+        {
+            _logger.LogWarning(
+                dbUpdateException,
+                "Database update exception while processing request. SqlState={SqlState} Table={Table} Column={Column}",
+                postgresException.SqlState,
+                postgresException.TableName,
+                postgresException.ColumnName);
+
+            context.Response.ContentType = "application/json";
+
+            if (postgresException.SqlState == PostgresErrorCodes.NotNullViolation)
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                var columnName = postgresException.ColumnName ?? "required field";
+                await context.Response.WriteAsync(
+                    JsonSerializer.Serialize(new { message = $"'{columnName}' is required." }));
+                return;
+            }
+
+            if (postgresException.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                context.Response.StatusCode = StatusCodes.Status409Conflict;
+                await context.Response.WriteAsync(
+                    JsonSerializer.Serialize(new { message = "A record with the same unique value already exists." }));
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(new { message = "Đã xảy ra lỗi không mong muốn." }));
         }
         catch (UnauthorizedAccessException unauthorizedException)
         {

@@ -52,4 +52,12 @@ public partial class Products
     public virtual ICollection<Categories> Category { get; set; } = new List<Categories>();
 
     public virtual ICollection<Tags> Tag { get; set; } = new List<Tags>();
+
+    public Guid? PublisherId { get; set; }
+
+    public virtual Publishers Publisher { get; set; }
+
+    public Guid? DeveloperId { get; set; }
+
+    public virtual Developers Developer { get; set; }
 }

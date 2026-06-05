@@ -47,6 +47,10 @@ public partial class HotWaterGasDBContext : DbContext
 
     public virtual DbSet<ProductTags> ProductTags { get; set; }
 
+    public virtual DbSet<Developers> Developers { get; set; }
+
+    public virtual DbSet<Publishers> Publishers { get; set; }
+
     public virtual DbSet<Reviews> Reviews { get; set; }
 
     public virtual DbSet<Roles> Roles { get; set; }
@@ -277,6 +281,14 @@ public partial class HotWaterGasDBContext : DbContext
                     j => j.HasOne(pt => pt.Tag).WithMany().HasForeignKey(pt => pt.TagId),
                     j => j.HasOne(pt => pt.Product).WithMany().HasForeignKey(pt => pt.ProductId),
                     j => j.HasKey(pt => new { pt.ProductId, pt.TagId }));
+
+            entity.HasOne(d => d.Publisher).WithMany(p => p.Products)
+                .HasForeignKey(d => d.PublisherId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(d => d.Developer).WithMany(p => p.Products)
+                .HasForeignKey(d => d.DeveloperId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Reviews>(entity =>
@@ -413,6 +425,28 @@ public partial class HotWaterGasDBContext : DbContext
                 .WithMany()
                 .HasForeignKey(d => d.ParentTokenId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<Developers>(entity =>
+        {
+            entity.HasIndex(e => e.Slug, "IX_Developers_Slug").IsUnique();
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Name).IsRequired();
+            entity.Property(e => e.Slug).IsRequired();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("NOW()");
+        });
+
+        modelBuilder.Entity<Publishers>(entity =>
+        {
+            entity.HasIndex(e => e.Slug, "IX_Publishers_Slug").IsUnique();
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Name).IsRequired();
+            entity.Property(e => e.Slug).IsRequired();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("NOW()");
         });
 
         OnModelCreatingPartial(modelBuilder);
