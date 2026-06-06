@@ -25,8 +25,6 @@ public partial class Products
 
     public DateTime CreatedAt { get; set; }
 
-    public string ShortDescription { get; set; }
-
     public string Slug { get; set; }
 
     public DateTime UpdatedAt { get; set; }

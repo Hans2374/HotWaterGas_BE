@@ -151,7 +151,6 @@ public class AdminProductDetailResponse
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-    public string ShortDescription { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public decimal? DiscountPercentage { get; set; }
     public Guid? DiscountId { get; set; }
@@ -192,7 +191,6 @@ public class AdminProductUpsertRequest
     public string Name { get; set; } = string.Empty;
     public string? Slug { get; set; }
     public string Description { get; set; } = string.Empty;
-    public string ShortDescription { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public decimal? DiscountPercentage { get; set; }
     public Guid? DiscountId { get; set; }

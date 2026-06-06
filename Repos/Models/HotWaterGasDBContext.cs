@@ -255,9 +255,6 @@ public partial class HotWaterGasDBContext : DbContext
             entity.Property(e => e.Description).IsRequired();
             entity.Property(e => e.Name).IsRequired();
             entity.Property(e => e.Price).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.ShortDescription)
-                .IsRequired()
-                .HasDefaultValue("");
             entity.Property(e => e.Slug)
                 .IsRequired()
                 .HasDefaultValue("");

@@ -254,7 +254,6 @@ public class AdminProductService : IAdminProductService
             Name = product.Name,
             Slug = product.Slug,
             Description = product.Description,
-            ShortDescription = product.ShortDescription,
             Price = product.Price,
             DiscountPercentage = discountPercentage,
             DiscountId = product.Discount?.Id,
@@ -330,7 +329,6 @@ public class AdminProductService : IAdminProductService
             Name = request.Name,
             Slug = slug,
             Description = request.Description,
-            ShortDescription = request.ShortDescription,
             Price = request.Price,
             Stock = 0,
             IsDeleted = false,
@@ -479,7 +477,6 @@ public class AdminProductService : IAdminProductService
         product.Name = request.Name;
         product.Slug = request.Slug ?? product.Slug;
         product.Description = request.Description;
-        product.ShortDescription = request.ShortDescription;
         product.Price = request.Price;
         product.UpdatedAt = now;
         product.PublisherId = request.PublisherId;

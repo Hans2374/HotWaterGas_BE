@@ -47,8 +47,7 @@ public class ProductCatalogService : IProductCatalogService
             var searchPattern = $"%{search}%";
             productsQuery = productsQuery.Where(p =>
                 EF.Functions.ILike(p.Name, searchPattern) ||
-                EF.Functions.ILike(p.Description, searchPattern) ||
-                EF.Functions.ILike(p.ShortDescription, searchPattern));
+                EF.Functions.ILike(p.Description, searchPattern));
         }
 
         if (query.TagIds.Count > 0)
