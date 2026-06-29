@@ -233,9 +233,6 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// ── OAuth Correlation Diagnostics (temporary - for debugging only) ───────────────
-app.UseOAuthCorrelationDiagnostics();
-
 // ── Exception Handling (MUST be after auth pipeline) ───────────────────────────
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
