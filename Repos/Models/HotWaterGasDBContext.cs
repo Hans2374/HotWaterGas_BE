@@ -3,10 +3,11 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 
 namespace Repos.Models;
 
-public partial class HotWaterGasDBContext : DbContext
+public partial class HotWaterGasDBContext : DbContext, IDataProtectionKeyContext
 {
     public HotWaterGasDBContext()
     {
@@ -66,6 +67,8 @@ public partial class HotWaterGasDBContext : DbContext
     public virtual DbSet<WishlistItems> WishlistItems { get; set; }
 
     public virtual DbSet<Wishlists> Wishlists { get; set; }
+
+    public virtual DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

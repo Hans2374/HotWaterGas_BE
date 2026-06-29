@@ -94,9 +94,9 @@ builder.Services.AddHttpContextAccessor();
 // Required for OAuth correlation cookies to persist across app restarts
 // Without this, correlation cookies are invalidated on each restart, causing
 // "oauth state was missing or invalid" errors during OAuth flow
-var keysPath = Path.Combine(builder.Environment.ContentRootPath, "DataProtectionKeys");
+// Keys are stored in the Postgres database so they survive redeploys and instance restarts
 builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+    .PersistKeysToDbContext<HotWaterGasDBContext>()
     .SetApplicationName("HotWaterGas");
 
 builder.Services.AddRepos();
